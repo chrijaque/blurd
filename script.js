@@ -23,7 +23,7 @@ const videoCanvas = document.createElement('canvas');
 canvasContext = videoCanvas.getContext('2d');
 
 // WebSocket signaling server connection
-const socket = new WebSocket('ws://localhost:8080');
+const socket = new WebSocket('wss://blurd.adaptable.app');
 
 // Start Chat button: initialize the video chat
 startChatButton.addEventListener('click', () => {
