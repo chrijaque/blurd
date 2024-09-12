@@ -15,6 +15,7 @@ let isVideoOn = true;
 let isBlurred = true; // Blur effect enabled by default
 let canvasContext;
 let canvasStream;
+let iceCandidatesQueue = []; // Queue ICE candidates until remote description is set
 
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -86,12 +87,16 @@ socket.onmessage = async (message) => {
             startWebRTC();
             break;
         case 'offer':
+            // Ensure we only handle offers when the signaling state is stable
             if (peerConnection.signalingState === 'stable') {
                 console.log('Received offer');
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription }));
+
+                // Process any ICE candidates that arrived before the offer
+                processQueuedIceCandidates();
             } else {
                 console.error('Cannot handle offer in current signaling state:', peerConnection.signalingState);
             }
@@ -100,13 +105,22 @@ socket.onmessage = async (message) => {
             if (peerConnection.signalingState === 'have-local-offer') {
                 console.log('Received answer');
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+                // Process any ICE candidates that arrived before the answer
+                processQueuedIceCandidates();
             } else {
                 console.error('Cannot handle answer in current signaling state:', peerConnection.signalingState);
             }
             break;
         case 'ice-candidate':
             console.log('Received ICE candidate');
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            if (peerConnection.remoteDescription) {
+                // If the remote description is set, add the ICE candidate
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } else {
+                // Queue the ICE candidate until the remote description is set
+                iceCandidatesQueue.push(data.candidate);
+            }
             break;
         case 'disconnected':
             handleDisconnect();
@@ -200,6 +214,14 @@ function handleDisconnect() {
     }
     remoteVideo.srcObject = null;
     sendMessage(JSON.stringify({ type: 'disconnected' }));
+}
+
+// Process any ICE candidates that were queued
+function processQueuedIceCandidates() {
+    while (iceCandidatesQueue.length > 0) {
+        const candidate = iceCandidatesQueue.shift();
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
 }
 
 // Mute audio
