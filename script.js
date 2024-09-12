@@ -17,15 +17,15 @@ let canvasContext;
 let canvasStream;
 let iceCandidatesQueue = []; // Queue ICE candidates until remote description is set
 
+// Declare videoCanvas and its context
+const videoCanvas = document.createElement('canvas');
+canvasContext = videoCanvas.getContext('2d');
+
 let socket;
 let reconnectInterval;
-
-// Xirsys ICE servers configuration
 const configuration = {
     iceServers: [
-        {
-            urls: ["stun:fr-turn1.xirsys.com"]
-        },
+        { urls: 'stun:stun.l.google.com:19302' },
         {
             username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
             credential: "d11f86be-714e-11ef-8726-0242ac120004",
@@ -110,6 +110,8 @@ startChatButton.addEventListener('click', () => {
             console.error('Error accessing media devices.', error);
         });
 });
+
+// Continue with the rest of the code...
 
 // Handle incoming signaling messages
 function handleSignalingMessage(message) {
