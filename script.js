@@ -25,7 +25,20 @@ const videoCanvas = document.createElement('canvas');
 canvasContext = videoCanvas.getContext('2d');
 
 // WebSocket signaling server connection
-const socket = new WebSocket('wss://blurd.adaptable.app');
+let socket = new WebSocket('wss://blurd.adaptable.app');
+
+// WebSocket reconnection logic
+function reconnectWebSocket() {
+    socket = new WebSocket('wss://blurd.adaptable.app');
+    socket.onopen = () => {
+        console.log('WebSocket reconnected');
+        sendMessage(JSON.stringify({ type: 'ready' }));
+    };
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+    socket.onmessage = handleSignalingMessage;
+}
 
 // Ensure WebSocket is connected before sending messages
 socket.onopen = () => {
@@ -80,7 +93,7 @@ startChatButton.addEventListener('click', () => {
 });
 
 // Handle incoming signaling messages
-socket.onmessage = async (message) => {
+function handleSignalingMessage(message) {
     const data = JSON.parse(message.data);
 
     switch (data.type) {
@@ -96,10 +109,10 @@ socket.onmessage = async (message) => {
         case 'offer':
             if (peerConnection.signalingState === 'stable') {
                 console.log('Received offer');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription }));
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                    .then(() => peerConnection.createAnswer())
+                    .then((answer) => peerConnection.setLocalDescription(answer))
+                    .then(() => sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription })));
                 processQueuedIceCandidates(); // Process any ICE candidates that arrived before the offer
             } else {
                 console.error('Cannot handle offer in current signaling state:', peerConnection.signalingState);
@@ -108,7 +121,7 @@ socket.onmessage = async (message) => {
         case 'answer':
             if (peerConnection.signalingState === 'have-local-offer') {
                 console.log('Received answer');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
                 processQueuedIceCandidates(); // Process any ICE candidates that arrived before the answer
             } else {
                 console.error('Cannot handle answer in current signaling state:', peerConnection.signalingState);
@@ -116,7 +129,7 @@ socket.onmessage = async (message) => {
             break;
         case 'ice-candidate':
             if (peerConnection.remoteDescription) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             } else {
                 iceCandidatesQueue.push(data.candidate); // Queue the ICE candidate until the remote description is set
             }
@@ -127,7 +140,9 @@ socket.onmessage = async (message) => {
         default:
             break;
     }
-};
+}
+
+socket.onmessage = handleSignalingMessage;
 
 // Start WebRTC when connected to a peer
 function startWebRTC() {
@@ -222,11 +237,8 @@ nextButton.addEventListener('click', () => {
     // Reset WebRTC connection and signaling state
     statusMessage.textContent = 'Searching for a new peer...';
     
-    // Notify server we are ready for a new connection
-    sendMessage(JSON.stringify({ type: 'ready' }));
-
-    // Start a fresh WebRTC session
-    startWebRTC();
+    // Reconnect WebSocket and start a fresh session
+    reconnectWebSocket();
 });
 
 // Disconnect button: End the chat session
