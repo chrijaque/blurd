@@ -10,7 +10,6 @@ const statusMessage = document.getElementById('statusMessage');
 
 let localStream;
 let peerConnection;
-let isOfferer = false; // Will be determined by the server
 let isMuted = false;
 let isVideoOn = true;
 let isBlurred = true; // Blur effect enabled by default
@@ -18,38 +17,38 @@ let canvasContext;
 let canvasStream;
 let iceCandidatesQueue = []; // Queue ICE candidates until remote description is set
 
+let socket;
+let reconnectInterval;
 const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-// Create a canvas for video processing (mirroring and blur)
-const videoCanvas = document.createElement('canvas');
-canvasContext = videoCanvas.getContext('2d');
-
-// WebSocket signaling server connection
-let socket = new WebSocket('wss://blurd.adaptable.app');
-
-// WebSocket reconnection logic
-function reconnectWebSocket() {
+// WebSocket signaling server connection with auto-reconnect
+function initWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
+
     socket.onopen = () => {
-        console.log('WebSocket reconnected');
+        console.log('WebSocket connection established');
+        if (reconnectInterval) clearInterval(reconnectInterval); // Stop reconnection attempts
         sendMessage(JSON.stringify({ type: 'ready' }));
     };
+
     socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
+
     socket.onmessage = handleSignalingMessage;
+
+    socket.onclose = () => {
+        console.warn('WebSocket closed. Attempting to reconnect...');
+        reconnectInterval = setInterval(() => {
+            console.log('Attempting to reconnect WebSocket...');
+            initWebSocket();
+        }, 3000); // Try to reconnect every 3 seconds
+    };
 }
 
+initWebSocket(); // Initialize the WebSocket when the page loads
+
 // Ensure WebSocket is connected before sending messages
-socket.onopen = () => {
-    console.log('WebSocket connection established');
-};
-
-socket.onerror = (error) => {
-    console.error('WebSocket error:', error);
-};
-
-// Utility to send WebSocket messages only if the connection is open
 function sendMessage(message) {
     if (socket.readyState === WebSocket.OPEN) {
         console.log('Sending message:', message);
@@ -99,21 +98,17 @@ function handleSignalingMessage(message) {
     switch (data.type) {
         case 'connected':
             statusMessage.textContent = 'Connected to a peer!';
-            isOfferer = data.isOfferer; // Set the role from the server
             startWebRTC();
-            if (isOfferer) {
-                // Only create an offer if this peer is the offerer
-                createOffer();
-            }
             break;
         case 'offer':
+            // Ensure we only handle offers when the signaling state is stable
             if (peerConnection.signalingState === 'stable') {
                 console.log('Received offer');
                 peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
                     .then(() => peerConnection.createAnswer())
                     .then((answer) => peerConnection.setLocalDescription(answer))
                     .then(() => sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription })));
-                processQueuedIceCandidates(); // Process any ICE candidates that arrived before the offer
+                processQueuedIceCandidates();
             } else {
                 console.error('Cannot handle offer in current signaling state:', peerConnection.signalingState);
             }
@@ -122,16 +117,19 @@ function handleSignalingMessage(message) {
             if (peerConnection.signalingState === 'have-local-offer') {
                 console.log('Received answer');
                 peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                processQueuedIceCandidates(); // Process any ICE candidates that arrived before the answer
+                processQueuedIceCandidates();
             } else {
                 console.error('Cannot handle answer in current signaling state:', peerConnection.signalingState);
             }
             break;
         case 'ice-candidate':
+            console.log('Received ICE candidate');
             if (peerConnection.remoteDescription) {
+                // If the remote description is set, add the ICE candidate
                 peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             } else {
-                iceCandidatesQueue.push(data.candidate); // Queue the ICE candidate until the remote description is set
+                // Queue the ICE candidate until the remote description is set
+                iceCandidatesQueue.push(data.candidate);
             }
             break;
         case 'disconnected':
@@ -141,8 +139,6 @@ function handleSignalingMessage(message) {
             break;
     }
 }
-
-socket.onmessage = handleSignalingMessage;
 
 // Start WebRTC when connected to a peer
 function startWebRTC() {
@@ -156,8 +152,8 @@ function startWebRTC() {
 
     // Handle incoming stream from the remote peer
     peerConnection.ontrack = (event) => {
-        console.log('Remote track received:', event.streams[0]); // Log the received stream
         remoteVideo.srcObject = event.streams[0];
+        // Apply blur effect to the remote video by default
         remoteVideo.style.filter = isBlurred ? 'blur(10px)' : 'none';
         remoteVideo.style.transform = 'scaleX(-1)'; // Mirror the remote video
     };
@@ -165,36 +161,25 @@ function startWebRTC() {
     // Send ICE candidates to the signaling server
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            console.log('Sending ICE candidate:', event.candidate);
             sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
         }
     };
 
-    // Log connection state changes
     peerConnection.onconnectionstatechange = () => {
         console.log('Connection state change:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'disconnected') {
-            console.log('Peer disconnected, resetting connection...');
-            handleDisconnect();
+        if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+            console.log('Connection failed or disconnected, attempting to reset...');
+            handleDisconnect(); // Trigger reconnection logic
         }
     };
 
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state change:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
-            console.log('ICE failed or disconnected. Resetting connection.');
-            handleDisconnect();
+            console.log('ICE failed or disconnected. Attempting to reconnect...');
+            handleDisconnect(); // Trigger reconnection logic
         }
     };
-}
-
-// Create and send an offer (only if this peer is the offerer)
-function createOffer() {
-    if (isOfferer) {
-        peerConnection.createOffer()
-            .then((offer) => peerConnection.setLocalDescription(offer))
-            .then(() => sendMessage(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })));
-    }
 }
 
 // Process the local video through the canvas (mirroring and blur)
@@ -267,10 +252,8 @@ function handleDisconnect() {
 function processQueuedIceCandidates() {
     while (iceCandidatesQueue.length > 0) {
         const candidate = iceCandidatesQueue.shift();
-        console.log('Processing queued ICE candidate:', candidate); // Log the candidate being processed
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) => {
-            console.error('Error adding ICE candidate:', error);
-        });
+        console.log('Processing queued ICE candidate:', candidate);
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     }
 }
 
