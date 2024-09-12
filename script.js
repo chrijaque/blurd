@@ -10,6 +10,7 @@ const statusMessage = document.getElementById('statusMessage');
 
 let localStream;
 let peerConnection;
+let isOfferer = false; // Will be determined by the server
 let isMuted = false;
 let isVideoOn = true;
 let isBlurred = true; // Blur effect enabled by default
@@ -84,19 +85,20 @@ socket.onmessage = async (message) => {
     switch (data.type) {
         case 'connected':
             statusMessage.textContent = 'Connected to a peer!';
+            isOfferer = data.isOfferer; // Set the role from the server
             startWebRTC();
+            if (isOfferer) {
+                createOffer(); // Create the offer if this peer is the offerer
+            }
             break;
         case 'offer':
-            // Ensure we only handle offers when the signaling state is stable
             if (peerConnection.signalingState === 'stable') {
                 console.log('Received offer');
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription }));
-
-                // Process any ICE candidates that arrived before the offer
-                processQueuedIceCandidates();
+                processQueuedIceCandidates(); // Process any ICE candidates that arrived before the offer
             } else {
                 console.error('Cannot handle offer in current signaling state:', peerConnection.signalingState);
             }
@@ -105,21 +107,16 @@ socket.onmessage = async (message) => {
             if (peerConnection.signalingState === 'have-local-offer') {
                 console.log('Received answer');
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-
-                // Process any ICE candidates that arrived before the answer
-                processQueuedIceCandidates();
+                processQueuedIceCandidates(); // Process any ICE candidates that arrived before the answer
             } else {
                 console.error('Cannot handle answer in current signaling state:', peerConnection.signalingState);
             }
             break;
         case 'ice-candidate':
-            console.log('Received ICE candidate');
             if (peerConnection.remoteDescription) {
-                // If the remote description is set, add the ICE candidate
                 await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             } else {
-                // Queue the ICE candidate until the remote description is set
-                iceCandidatesQueue.push(data.candidate);
+                iceCandidatesQueue.push(data.candidate); // Queue the ICE candidate until the remote description is set
             }
             break;
         case 'disconnected':
@@ -154,8 +151,10 @@ function startWebRTC() {
             sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
         }
     };
+}
 
-    // Create and send an offer
+// Create and send an offer (only if this peer is the offerer)
+function createOffer() {
     peerConnection.createOffer()
         .then((offer) => peerConnection.setLocalDescription(offer))
         .then(() => sendMessage(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })));

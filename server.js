@@ -19,8 +19,8 @@ wss.on('connection', (ws) => {
         waitingClient = null;
 
         // Let both clients know they are connected
-        ws.send(JSON.stringify({ type: 'connected' }));
-        otherClient.send(JSON.stringify({ type: 'connected' }));
+        ws.send(JSON.stringify({ type: 'connected', isOfferer: true }));  // ws is the offerer
+        otherClient.send(JSON.stringify({ type: 'connected', isOfferer: false }));  // otherClient is the answerer
 
         // Forward messages between clients
         ws.on('message', (message) => {
@@ -33,12 +33,12 @@ wss.on('connection', (ws) => {
 
         ws.on('close', () => {
             console.log('User disconnected.');
-            otherClient.close();
+            otherClient.close(); // Close the other client's connection
         });
 
         otherClient.on('close', () => {
             console.log('Other user disconnected.');
-            ws.close();
+            ws.close(); // Close this client's connection
         });
     } else {
         console.log('Waiting for another user to connect...');
@@ -48,7 +48,7 @@ wss.on('connection', (ws) => {
 
         ws.on('close', () => {
             console.log('Waiting client disconnected.');
-            waitingClient = null;
+            waitingClient = null; // Reset waiting client when they disconnect
         });
     }
 });
