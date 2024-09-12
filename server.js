@@ -51,6 +51,14 @@ wss.on('connection', (ws) => {
             waitingClient = null; // Reset waiting client when they disconnect
         });
     }
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state change:', peerConnection.connectionState);
+    };
+    
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state change:', peerConnection.iceConnectionState);
+    };
+
 });
 
 // Start the server and listen on the provided PORT environment variable

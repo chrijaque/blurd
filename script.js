@@ -140,6 +140,7 @@ function startWebRTC() {
 
     // Handle incoming stream from the remote peer
     peerConnection.ontrack = (event) => {
+        console.log('Remote track received:', event.streams[0]); // Log the received stream
         remoteVideo.srcObject = event.streams[0];
         // Apply blur effect to the remote video by default
         remoteVideo.style.filter = isBlurred ? 'blur(10px)' : 'none';
@@ -222,6 +223,7 @@ function handleDisconnect() {
 function processQueuedIceCandidates() {
     while (iceCandidatesQueue.length > 0) {
         const candidate = iceCandidatesQueue.shift();
+        console.log('Processing queued ICE candidate:', candidate); // Log the candidate being processed
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     }
 }
