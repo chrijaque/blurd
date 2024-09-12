@@ -39,6 +39,7 @@ socket.onerror = (error) => {
 // Utility to send WebSocket messages only if the connection is open
 function sendMessage(message) {
     if (socket.readyState === WebSocket.OPEN) {
+        console.log('Sending message:', message);
         socket.send(message);
     } else {
         console.error('WebSocket is not open yet, message not sent.');
@@ -142,7 +143,6 @@ function startWebRTC() {
     peerConnection.ontrack = (event) => {
         console.log('Remote track received:', event.streams[0]); // Log the received stream
         remoteVideo.srcObject = event.streams[0];
-        // Apply blur effect to the remote video by default
         remoteVideo.style.filter = isBlurred ? 'blur(10px)' : 'none';
         remoteVideo.style.transform = 'scaleX(-1)'; // Mirror the remote video
     };
@@ -150,6 +150,7 @@ function startWebRTC() {
     // Send ICE candidates to the signaling server
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('Sending ICE candidate:', event.candidate);
             sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
         }
     };
@@ -207,14 +208,17 @@ function startCanvasProcessing() {
 
 // Next button: Skip to the next random peer
 nextButton.addEventListener('click', () => {
-    handleDisconnect();
+    console.log('Next button clicked, resetting connection...');
+    handleDisconnect(); // Disconnect the current session
+
+    // Reset WebRTC connection and signaling state
     statusMessage.textContent = 'Searching for a new peer...';
-
-    // Reinitialize WebRTC for the next session
-    startWebRTC();
-
-    // Send a message to the server that the client is ready for the next peer
+    
+    // Notify server we are ready for a new connection
     sendMessage(JSON.stringify({ type: 'ready' }));
+
+    // Start a fresh WebRTC session
+    startWebRTC();
 });
 
 // Disconnect button: End the chat session
@@ -230,6 +234,7 @@ function handleDisconnect() {
         peerConnection = null;
     }
     remoteVideo.srcObject = null;
+    localVideo.srcObject = null;
 
     // Notify the server that we have disconnected
     sendMessage(JSON.stringify({ type: 'disconnected' }));
