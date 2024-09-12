@@ -158,10 +158,18 @@ function startWebRTC() {
     // Log connection state changes
     peerConnection.onconnectionstatechange = () => {
         console.log('Connection state change:', peerConnection.connectionState);
+        if (peerConnection.connectionState === 'disconnected') {
+            console.log('Peer disconnected, resetting connection...');
+            handleDisconnect();
+        }
     };
 
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state change:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+            console.log('ICE failed or disconnected. Resetting connection.');
+            handleDisconnect();
+        }
     };
 }
 
@@ -235,6 +243,9 @@ function handleDisconnect() {
     }
     remoteVideo.srcObject = null;
     localVideo.srcObject = null;
+
+    // Clear queued ICE candidates
+    iceCandidatesQueue = [];
 
     // Notify the server that we have disconnected
     sendMessage(JSON.stringify({ type: 'disconnected' }));

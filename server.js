@@ -35,14 +35,18 @@ wss.on('connection', (ws) => {
 
         ws.on('close', () => {
             console.log('User disconnected.');
-            otherClient.send(JSON.stringify({ type: 'disconnected' }));
-            otherClient.close(); // Close the other client's connection
+            if (otherClient) {
+                otherClient.send(JSON.stringify({ type: 'disconnected' }));
+                otherClient.close(); // Close the other client's connection
+            }
         });
 
         otherClient.on('close', () => {
             console.log('Other user disconnected.');
-            ws.send(JSON.stringify({ type: 'disconnected' }));
-            ws.close(); // Close this client's connection
+            if (ws) {
+                ws.send(JSON.stringify({ type: 'disconnected' }));
+                ws.close(); // Close this client's connection
+            }
         });
 
     } else {
@@ -58,8 +62,8 @@ wss.on('connection', (ws) => {
     }
 });
 
-// Start the server and listen on the provided PORT environment variable
-const PORT = process.env.PORT || 8080;
+// Start the server and listen on port 443
+const PORT = process.env.PORT || 443;
 server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
