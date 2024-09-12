@@ -13,16 +13,16 @@ let peerConnection;
 let isMuted = false;
 let isVideoOn = true;
 let isBlurred = true; // Blur effect enabled by default
-let canvasContext;
-let canvasStream;
 let iceCandidatesQueue = []; // Queue ICE candidates until remote description is set
 
-// Declare videoCanvas and its context
+// Define videoCanvas and its context
 const videoCanvas = document.createElement('canvas');
-canvasContext = videoCanvas.getContext('2d');
+const canvasContext = videoCanvas.getContext('2d');
 
 let socket;
 let reconnectInterval;
+
+// TURN server configuration (replace with your Xirsys credentials)
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -110,8 +110,6 @@ startChatButton.addEventListener('click', () => {
             console.error('Error accessing media devices.', error);
         });
 });
-
-// Continue with the rest of the code...
 
 // Handle incoming signaling messages
 function handleSignalingMessage(message) {
