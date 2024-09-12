@@ -88,7 +88,8 @@ socket.onmessage = async (message) => {
             isOfferer = data.isOfferer; // Set the role from the server
             startWebRTC();
             if (isOfferer) {
-                createOffer(); // Create the offer if this peer is the offerer
+                // Only create an offer if this peer is the offerer
+                createOffer();
             }
             break;
         case 'offer':
@@ -155,9 +156,11 @@ function startWebRTC() {
 
 // Create and send an offer (only if this peer is the offerer)
 function createOffer() {
-    peerConnection.createOffer()
-        .then((offer) => peerConnection.setLocalDescription(offer))
-        .then(() => sendMessage(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })));
+    if (isOfferer) {
+        peerConnection.createOffer()
+            .then((offer) => peerConnection.setLocalDescription(offer))
+            .then(() => sendMessage(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })));
+    }
 }
 
 // Process the local video through the canvas (mirroring and blur)
