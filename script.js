@@ -153,6 +153,15 @@ function startWebRTC() {
             sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
         }
     };
+
+    // Log connection state changes
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state change:', peerConnection.connectionState);
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state change:', peerConnection.iceConnectionState);
+    };
 }
 
 // Create and send an offer (only if this peer is the offerer)
@@ -200,6 +209,11 @@ function startCanvasProcessing() {
 nextButton.addEventListener('click', () => {
     handleDisconnect();
     statusMessage.textContent = 'Searching for a new peer...';
+
+    // Reinitialize WebRTC for the next session
+    startWebRTC();
+
+    // Send a message to the server that the client is ready for the next peer
     sendMessage(JSON.stringify({ type: 'ready' }));
 });
 
@@ -216,6 +230,8 @@ function handleDisconnect() {
         peerConnection = null;
     }
     remoteVideo.srcObject = null;
+
+    // Notify the server that we have disconnected
     sendMessage(JSON.stringify({ type: 'disconnected' }));
 }
 
@@ -224,7 +240,9 @@ function processQueuedIceCandidates() {
     while (iceCandidatesQueue.length > 0) {
         const candidate = iceCandidatesQueue.shift();
         console.log('Processing queued ICE candidate:', candidate); // Log the candidate being processed
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) => {
+            console.error('Error adding ICE candidate:', error);
+        });
     }
 }
 

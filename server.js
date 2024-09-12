@@ -24,22 +24,27 @@ wss.on('connection', (ws) => {
 
         // Forward messages between clients
         ws.on('message', (message) => {
+            console.log('Forwarding message between clients...');
             otherClient.send(message);
         });
 
         otherClient.on('message', (message) => {
+            console.log('Forwarding message between clients...');
             ws.send(message);
         });
 
         ws.on('close', () => {
             console.log('User disconnected.');
+            otherClient.send(JSON.stringify({ type: 'disconnected' }));
             otherClient.close(); // Close the other client's connection
         });
 
         otherClient.on('close', () => {
             console.log('Other user disconnected.');
+            ws.send(JSON.stringify({ type: 'disconnected' }));
             ws.close(); // Close this client's connection
         });
+
     } else {
         console.log('Waiting for another user to connect...');
         waitingClient = ws;
@@ -51,14 +56,6 @@ wss.on('connection', (ws) => {
             waitingClient = null; // Reset waiting client when they disconnect
         });
     }
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Connection state change:', peerConnection.connectionState);
-    };
-    
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state change:', peerConnection.iceConnectionState);
-    };
-
 });
 
 // Start the server and listen on the provided PORT environment variable
