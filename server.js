@@ -1,6 +1,11 @@
+const http = require('http');
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+// Create an HTTP server
+const server = http.createServer();
+
+// Use the WebSocket server with the HTTP server
+const wss = new WebSocket.Server({ server });
 
 let waitingClient = null;
 
@@ -48,4 +53,8 @@ wss.on('connection', (ws) => {
     }
 });
 
-console.log('WebSocket server is running...');
+// Start the server and listen on the provided PORT environment variable
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
