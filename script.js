@@ -25,6 +25,24 @@ canvasContext = videoCanvas.getContext('2d');
 // WebSocket signaling server connection
 const socket = new WebSocket('wss://blurd.adaptable.app');
 
+// Ensure WebSocket is connected before sending messages
+socket.onopen = () => {
+    console.log('WebSocket connection established');
+};
+
+socket.onerror = (error) => {
+    console.error('WebSocket error:', error);
+};
+
+// Utility to send WebSocket messages only if the connection is open
+function sendMessage(message) {
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+    } else {
+        console.error('WebSocket is not open yet, message not sent.');
+    }
+}
+
 // Start Chat button: initialize the video chat
 startChatButton.addEventListener('click', () => {
     startChatButton.disabled = true;
@@ -51,7 +69,7 @@ startChatButton.addEventListener('click', () => {
             startCanvasProcessing();
 
             // Notify the server that we're ready to chat
-            socket.send(JSON.stringify({ type: 'ready' }));
+            sendMessage(JSON.stringify({ type: 'ready' }));
         })
         .catch((error) => {
             console.error('Error accessing media devices.', error);
@@ -68,15 +86,26 @@ socket.onmessage = async (message) => {
             startWebRTC();
             break;
         case 'offer':
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.send(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription }));
+            if (peerConnection.signalingState === 'stable') {
+                console.log('Received offer');
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                sendMessage(JSON.stringify({ type: 'answer', answer: peerConnection.localDescription }));
+            } else {
+                console.error('Cannot handle offer in current signaling state:', peerConnection.signalingState);
+            }
             break;
         case 'answer':
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            if (peerConnection.signalingState === 'have-local-offer') {
+                console.log('Received answer');
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            } else {
+                console.error('Cannot handle answer in current signaling state:', peerConnection.signalingState);
+            }
             break;
         case 'ice-candidate':
+            console.log('Received ICE candidate');
             await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             break;
         case 'disconnected':
@@ -108,18 +137,14 @@ function startWebRTC() {
     // Send ICE candidates to the signaling server
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            socket.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
+            sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
         }
     };
 
     // Create and send an offer
     peerConnection.createOffer()
-        .then((offer) => {
-            return peerConnection.setLocalDescription(offer);
-        })
-        .then(() => {
-            socket.send(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription }));
-        });
+        .then((offer) => peerConnection.setLocalDescription(offer))
+        .then(() => sendMessage(JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })));
 }
 
 // Process the local video through the canvas (mirroring and blur)
@@ -158,7 +183,7 @@ function startCanvasProcessing() {
 nextButton.addEventListener('click', () => {
     handleDisconnect();
     statusMessage.textContent = 'Searching for a new peer...';
-    socket.send(JSON.stringify({ type: 'ready' }));
+    sendMessage(JSON.stringify({ type: 'ready' }));
 });
 
 // Disconnect button: End the chat session
@@ -174,7 +199,7 @@ function handleDisconnect() {
         peerConnection = null;
     }
     remoteVideo.srcObject = null;
-    socket.send(JSON.stringify({ type: 'disconnected' }));
+    sendMessage(JSON.stringify({ type: 'disconnected' }));
 }
 
 // Mute audio
