@@ -19,7 +19,27 @@ let iceCandidatesQueue = []; // Queue ICE candidates until remote description is
 
 let socket;
 let reconnectInterval;
-const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+// Xirsys ICE servers configuration
+const configuration = {
+    iceServers: [
+        {
+            urls: ["stun:fr-turn1.xirsys.com"]
+        },
+        {
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004",
+            urls: [
+                "turn:fr-turn1.xirsys.com:80?transport=udp",
+                "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+                "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+            ]
+        }
+    ]
+};
 
 // WebSocket signaling server connection with auto-reconnect
 function initWebSocket() {
