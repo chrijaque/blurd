@@ -228,7 +228,6 @@ peerConnection.ontrack = (event) => {
 
 // Ensure the Remove Blur button is properly set up
 const removeBlurButton = document.getElementById('removeBlurButton');
-let localWantsBlurOff = false;
 
 removeBlurButton.addEventListener('click', () => {
     localWantsBlurOff = !localWantsBlurOff;
