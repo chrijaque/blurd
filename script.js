@@ -15,15 +15,12 @@ const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         {
-            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU",
-            credential: "d11f86be-714e-11ef-8726-0242ac120004L",
+            username: "YOUR_XIRSYS_USERNAME",
+            credential: "YOUR_XIRSYS_CREDENTIAL",
             urls: [
                 "turn:fr-turn1.xirsys.com:80?transport=udp",
                 "turn:fr-turn1.xirsys.com:3478?transport=udp",
-                "turn:fr-turn1.xirsys.com:80?transport=tcp",
-                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
                 "turns:fr-turn1.xirsys.com:443?transport=tcp",
-                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
             ]
         }
     ]
@@ -31,7 +28,7 @@ const configuration = {
 
 // Initialize WebSocket
 function initWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.app');
+    socket = new WebSocket('wss://your-websocket-url');
 
     socket.onopen = () => {
         console.log('WebSocket connected');
@@ -54,7 +51,7 @@ startChatButton.addEventListener('click', () => {
             localStream = stream;
             localVideo.srcObject = stream;
 
-            // Start signaling process
+            // Notify the server that we're ready to start
             sendMessage({ type: 'ready' });
         })
         .catch((error) => {
@@ -93,9 +90,19 @@ function handleSignalingMessage(message) {
 
 // Create a WebRTC connection and add the local stream to it
 function startWebRTC() {
+    if (!localStream) {
+        console.error('Local stream is not available');
+        return;
+    }
+
     peerConnection = new RTCPeerConnection(configuration);
 
-    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+    // Ensure localStream is defined before accessing it
+    if (localStream) {
+        localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+    } else {
+        console.error('Cannot access localStream');
+    }
 
     peerConnection.ontrack = (event) => {
         remoteVideo.srcObject = event.streams[0];
