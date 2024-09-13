@@ -15,12 +15,15 @@ const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         {
-            username: "YOUR_XIRSYS_USERNAME",
-            credential: "YOUR_XIRSYS_CREDENTIAL",
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004L",
             urls: [
                 "turn:fr-turn1.xirsys.com:80?transport=udp",
                 "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
                 "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
             ]
         }
     ]
@@ -28,7 +31,7 @@ const configuration = {
 
 // Initialize WebSocket
 function initWebSocket() {
-    socket = new WebSocket('wss://your-websocket-url');
+    socket = new WebSocket('wss://blurd.adaptable.appl');
 
     socket.onopen = () => {
         console.log('WebSocket connected');
