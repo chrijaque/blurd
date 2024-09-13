@@ -13,14 +13,17 @@ let iceCandidatesQueue = [];
 // WebRTC configuration using STUN and TURN servers
 const configuration = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:fr-turn1.xirsys.com' },
         {
-            username: "YOUR_XIRSYS_USERNAME",
-            credential: "YOUR_XIRSYS_CREDENTIAL",
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=", // Replace with actual username
+            credential: "d11f86be-714e-11ef-8726-0242ac120004", // Replace with actual credential
             urls: [
                 "turn:fr-turn1.xirsys.com:80?transport=udp",
                 "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
                 "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp",
             ]
         }
     ]
@@ -28,7 +31,7 @@ const configuration = {
 
 // Initialize WebSocket
 function initWebSocket() {
-    socket = new WebSocket('wss://your-websocket-url');
+    socket = new WebSocket('wss://blurd.adaptable.app'); // Replace with actual WebSocket URL
 
     socket.onopen = () => {
         console.log('WebSocket connected');
@@ -79,12 +82,17 @@ function handleSignalingMessage(message) {
             peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
             break;
         case 'ice-candidate':
-            if (peerConnection.remoteDescription) {
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } else {
-                iceCandidatesQueue.push(data.candidate);
-            }
+            handleIceCandidate(data.candidate);
             break;
+    }
+}
+
+function handleIceCandidate(candidate) {
+    if (peerConnection && peerConnection.remoteDescription) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(error => console.error('Error adding ICE candidate:', error));
+    } else {
+        iceCandidatesQueue.push(candidate);
     }
 }
 
@@ -97,12 +105,7 @@ function startWebRTC() {
 
     peerConnection = new RTCPeerConnection(configuration);
 
-    // Ensure localStream is defined before accessing it
-    if (localStream) {
-        localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
-    } else {
-        console.error('Cannot access localStream');
-    }
+    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
 
     peerConnection.ontrack = (event) => {
         remoteVideo.srcObject = event.streams[0];
@@ -116,10 +119,18 @@ function startWebRTC() {
 
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected') {
+        if (peerConnection.iceConnectionState === 'disconnected' || 
+            peerConnection.iceConnectionState === 'failed' ||
+            peerConnection.iceConnectionState === 'closed') {
             handleDisconnect();
         }
     };
+
+    // Process any queued ICE candidates
+    while (iceCandidatesQueue.length) {
+        const candidate = iceCandidatesQueue.shift();
+        handleIceCandidate(candidate);
+    }
 }
 
 // Create an offer if the user is the offerer
@@ -140,4 +151,8 @@ function handleDisconnect() {
         peerConnection.close();
         peerConnection = null;
     }
+    // Reset UI elements and prepare for a new connection
+    startChatButton.disabled = false;
+    remoteVideo.srcObject = null;
+    console.log('Disconnected from peer');
 }
