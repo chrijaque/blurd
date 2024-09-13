@@ -82,6 +82,7 @@ async function startWebRTC() {
         // Attempt to get the local stream
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream; // Add this line
         } catch (error) {
             console.error('Error accessing media devices:', error);
             return;
@@ -91,9 +92,14 @@ async function startWebRTC() {
     peerConnection = new RTCPeerConnection(configuration);
 
     // Add local stream tracks to the peer connection
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
+    if (localStream) { // Add this check
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    } else {
+        console.error('Local stream is still not available');
+        return;
+    }
 
     // When the remote stream is received, display it
     peerConnection.ontrack = (event) => {
