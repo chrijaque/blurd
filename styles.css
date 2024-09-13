@@ -42,10 +42,13 @@ button {
 
 /* chat box */
 
-.chat-container {
-    width: 300px;
+.chat-box {
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
     border: 1px solid #ccc;
-    margin-top: 20px;
+    border-radius: 5px;
+    overflow: hidden;
 }
 
 .chat-messages {
@@ -58,9 +61,19 @@ button {
 .chat-input {
     display: flex;
     padding: 10px;
+    background-color: #fff;
 }
 
 #chatInput {
     flex-grow: 1;
     margin-right: 10px;
+    padding: 5px;
+}
+
+#sendMessageButton {
+    padding: 5px 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
 }
