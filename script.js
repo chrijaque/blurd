@@ -143,12 +143,17 @@ function handleSignalingMessage(message) {
             }
             break;
         case 'ice-candidate':
-            console.log('Received ICE candidate');
+            console.log('Received ICE candidate:', data.candidate);
             if (peerConnection.remoteDescription) {
-                // If the remote description is set, add the ICE candidate
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                    .then(() => {
+                        console.log('Successfully added received ICE candidate');
+                    })
+                    .catch((error) => {
+                        console.error('Error adding received ICE candidate:', error);
+                    });
             } else {
-                // Queue the ICE candidate until the remote description is set
+                console.log('Remote description not set yet, queuing the ICE candidate');
                 iceCandidatesQueue.push(data.candidate);
             }
             break;
@@ -172,6 +177,7 @@ function startWebRTC() {
 
     // Handle incoming stream from the remote peer
     peerConnection.ontrack = (event) => {
+        console.log('Remote track received:', event.streams[0]);
         remoteVideo.srcObject = event.streams[0];
         // Apply blur effect to the remote video by default
         remoteVideo.style.filter = isBlurred ? 'blur(10px)' : 'none';
@@ -181,10 +187,14 @@ function startWebRTC() {
     // Send ICE candidates to the signaling server
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('Sending ICE candidate:', event.candidate);
             sendMessage(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
+        } else {
+            console.log('All ICE candidates have been sent');
         }
     };
 
+    // Log connection state changes
     peerConnection.onconnectionstatechange = () => {
         console.log('Connection state change:', peerConnection.connectionState);
         if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
@@ -193,6 +203,7 @@ function startWebRTC() {
         }
     };
 
+    // Log ICE connection state changes
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state change:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
@@ -243,7 +254,7 @@ nextButton.addEventListener('click', () => {
     statusMessage.textContent = 'Searching for a new peer...';
     
     // Reconnect WebSocket and start a fresh session
-    reconnectWebSocket();
+    initWebSocket();
 });
 
 // Disconnect button: End the chat session
