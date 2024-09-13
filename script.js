@@ -331,3 +331,77 @@ function sendMessage(message) {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
 }
+
+
+// Function to toggle blur
+function toggleBlur() {
+    console.log('Toggle blur function called');
+    localWantsBlurOff = !localWantsBlurOff;
+    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+    updateBlurState();
+}
+
+// Function to update blur state
+function updateBlurState() {
+    console.log('Updating blur state');
+    console.log('Local wants blur off:', localWantsBlurOff);
+    console.log('Remote wants blur off:', remoteWantsBlurOff);
+    
+    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
+    applyBlur(localVideo, !shouldRemoveBlur);
+    applyBlur(remoteVideo, !shouldRemoveBlur);
+    
+    const toggleBlurButton = document.getElementById('toggleBlurButton');
+    if (toggleBlurButton) {
+        toggleBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+        toggleBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
+        console.log('Button updated:', toggleBlurButton.textContent);
+    } else {
+        console.error('Toggle Blur button not found');
+    }
+}
+
+// Function to apply or remove blur
+function applyBlur(video, enabled) {
+    if (video) {
+        video.style.filter = enabled ? 'blur(10px)' : 'none';
+        console.log(`Blur ${enabled ? 'applied to' : 'removed from'} ${video.id}`);
+    } else {
+        console.error('Video element not found');
+    }
+}
+
+// Modify the existing socket.onmessage function
+const originalOnMessage = socket.onmessage;
+socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
+
+    if (data.type === 'blur-preference') {
+        remoteWantsBlurOff = data.wantsBlurOff;
+        console.log('Remote wants blur off:', remoteWantsBlurOff);
+        updateBlurState();
+    } else {
+        // Call the original onmessage handler for other message types
+        await originalOnMessage(event);
+    }
+};
+
+// Apply initial blur when the page loads
+window.onload = function() {
+    applyBlur(localVideo, true);
+    applyBlur(remoteVideo, true);
+    console.log('Initial blur applied');
+};
+
+// Make sure sendMessage function is defined globally
+if (typeof sendMessage !== 'function') {
+    function sendMessage(message) {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(message));
+            console.log('Message sent:', message);
+        } else {
+            console.error('WebSocket is not open. ReadyState:', socket.readyState);
+        }
+    }
+}
