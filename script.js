@@ -107,6 +107,7 @@ async function startWebRTC() {
     // When the remote stream is received, display it
     peerConnection.ontrack = (event) => {
         remoteVideo.srcObject = event.streams[0];
+        toggleBlur(remoteVideo, true);  // Apply blur to remote video
     };
 
     // Send ICE candidates to the other peer
@@ -212,6 +213,14 @@ socket.onmessage = async (event) => {
     }
 
     // ... rest of the existing code ...
+};
+
+// ... rest of the existing code ...
+
+// Ensure the blur is applied when the connection is established
+peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+    toggleBlur(remoteVideo, true);  // Apply blur to remote video
 };
 
 // ... rest of the existing code ...
