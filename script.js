@@ -76,7 +76,18 @@ startChatButton.addEventListener('click', () => {
         .catch((error) => console.error('Error accessing media devices:', error));
 });
 
-function startWebRTC() {
+async function startWebRTC() {
+    if (!localStream) {
+        console.error('Local stream is not available');
+        // Attempt to get the local stream
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch (error) {
+            console.error('Error accessing media devices:', error);
+            return;
+        }
+    }
+
     peerConnection = new RTCPeerConnection(configuration);
 
     // Add local stream tracks to the peer connection
@@ -128,3 +139,16 @@ nextButton.addEventListener('click', () => {
     statusMessage.textContent = 'Searching for a new peer...';
     sendMessage({ type: 'ready' }); // Send ready again for a new connection
 });
+
+async function initializeCall() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        startWebRTC();
+    } catch (error) {
+        console.error('Error accessing media devices:', error);
+    }
+}
+
+// Call this function when appropriate (e.g., when a "Start Call" button is clicked)
+// initializeCall();
