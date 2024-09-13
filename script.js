@@ -71,25 +71,25 @@ function sendMessage(message) {
 }
 
 // Access local media
-startChatButton.addEventListener('click', () => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then((stream) => {
-            localStream = stream;
-            localVideo.srcObject = stream;
-
-            statusMessage.textContent = 'Waiting for a peer...';
-            sendMessage({ type: 'ready' });
-        })
-        .catch((error) => console.error('Error accessing media devices:', error));
+startChatButton.addEventListener('click', async () => {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        toggleBlur(localVideo, true);  // Apply blur to local video
+        statusMessage.textContent = 'Waiting for a peer...';
+        sendMessage({ type: 'ready' });
+    } catch (error) {
+        console.error('Error accessing media devices:', error);
+    }
 });
 
 async function startWebRTC() {
     if (!localStream) {
         console.error('Local stream is not available');
-        // Attempt to get the local stream
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream; // Add this line
+            localVideo.srcObject = localStream;
+            toggleBlur(localVideo, true);  // Apply blur to local video
         } catch (error) {
             console.error('Error accessing media devices:', error);
             return;
@@ -222,6 +222,34 @@ socket.onmessage = async (event) => {
 peerConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
     applyInitialBlur();  // Apply blur to both videos when remote stream is added
+};
+
+// ... rest of the existing code ...
+
+// Ensure the Remove Blur button is properly set up
+const removeBlurButton = document.getElementById('removeBlurButton');
+let localWantsBlurOff = false;
+
+removeBlurButton.addEventListener('click', () => {
+    localWantsBlurOff = !localWantsBlurOff;
+    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+    updateBlurState();
+});
+
+// Update the updateBlurState function
+function updateBlurState() {
+    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
+    toggleBlur(localVideo, !shouldRemoveBlur);
+    toggleBlur(remoteVideo, !shouldRemoveBlur);
+    
+    removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+    removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
+}
+
+// Modify the peerConnection.ontrack event handler
+peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+    toggleBlur(remoteVideo, true);  // Apply blur to remote video
 };
 
 // ... rest of the existing code ...
