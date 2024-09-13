@@ -259,17 +259,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let localWantsBlurOff = false;
     let remoteWantsBlurOff = false;
 
-    if (removeBlurButton) {
-        removeBlurButton.addEventListener('click', () => {
-            localWantsBlurOff = !localWantsBlurOff;
-            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-            updateBlurState();
-        });
-    } else {
-        console.error('Remove Blur button not found in the DOM');
+    console.log('DOM fully loaded');
+
+    function toggleBlur(video, enabled) {
+        if (video) {
+            video.style.filter = enabled ? 'blur(10px)' : 'none';
+            console.log(`Blur ${enabled ? 'applied to' : 'removed from'} ${video.id}`);
+        } else {
+            console.error('Video element not found');
+        }
     }
 
     function updateBlurState() {
+        console.log('Updating blur state');
+        console.log('Local wants blur off:', localWantsBlurOff);
+        console.log('Remote wants blur off:', remoteWantsBlurOff);
+        
         const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
         toggleBlur(localVideo, !shouldRemoveBlur);
         toggleBlur(remoteVideo, !shouldRemoveBlur);
@@ -277,29 +282,50 @@ document.addEventListener('DOMContentLoaded', () => {
         if (removeBlurButton) {
             removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
             removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
+            console.log('Button updated:', removeBlurButton.textContent);
+        } else {
+            console.error('Remove Blur button not found');
         }
+    }
+
+    if (removeBlurButton) {
+        removeBlurButton.addEventListener('click', () => {
+            console.log('Remove Blur button clicked');
+            localWantsBlurOff = !localWantsBlurOff;
+            console.log('Local wants blur off:', localWantsBlurOff);
+            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+            updateBlurState();
+        });
+        console.log('Event listener added to Remove Blur button');
+    } else {
+        console.error('Remove Blur button not found in the DOM');
     }
 
     // Modify the existing socket.onmessage function
     socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-
-        // ... existing code ...
+        console.log('Received message:', data);
 
         if (data.type === 'blur-preference') {
             remoteWantsBlurOff = data.wantsBlurOff;
+            console.log('Remote wants blur off:', remoteWantsBlurOff);
             updateBlurState();
         }
 
-        // ... rest of the existing code ...
+        // ... rest of the existing socket.onmessage code ...
     };
 
-    // Make sure toggleBlur function is defined
-    function toggleBlur(video, enabled) {
-        if (video) {
-            video.style.filter = enabled ? 'blur(10px)' : 'none';
-        }
-    }
+    // Apply initial blur
+    toggleBlur(localVideo, true);
+    toggleBlur(remoteVideo, true);
 });
 
-// ... rest of the existing code ...
+// Make sure this function is defined in the global scope
+function sendMessage(message) {
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+        console.log('Message sent:', message);
+    } else {
+        console.error('WebSocket is not open. ReadyState:', socket.readyState);
+    }
+}
