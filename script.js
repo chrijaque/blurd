@@ -302,6 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Modify the existing socket.onmessage function
+    const originalOnMessage = socket.onmessage;
     socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
         console.log('Received message:', data);
@@ -310,9 +311,10 @@ document.addEventListener('DOMContentLoaded', () => {
             remoteWantsBlurOff = data.wantsBlurOff;
             console.log('Remote wants blur off:', remoteWantsBlurOff);
             updateBlurState();
+        } else {
+            // Call the original onmessage handler for other message types
+            await originalOnMessage(event);
         }
-
-        // ... rest of the existing socket.onmessage code ...
     };
 
     // Apply initial blur
