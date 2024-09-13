@@ -253,3 +253,54 @@ peerConnection.ontrack = (event) => {
 };
 
 // ... rest of the existing code ...
+
+// Make sure this code is placed after the DOM has fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const removeBlurButton = document.getElementById('removeBlurButton');
+    let localWantsBlurOff = false;
+    let remoteWantsBlurOff = false;
+
+    if (removeBlurButton) {
+        removeBlurButton.addEventListener('click', () => {
+            localWantsBlurOff = !localWantsBlurOff;
+            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+            updateBlurState();
+        });
+    } else {
+        console.error('Remove Blur button not found in the DOM');
+    }
+
+    function updateBlurState() {
+        const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
+        toggleBlur(localVideo, !shouldRemoveBlur);
+        toggleBlur(remoteVideo, !shouldRemoveBlur);
+        
+        if (removeBlurButton) {
+            removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+            removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
+        }
+    }
+
+    // Modify the existing socket.onmessage function
+    socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        // ... existing code ...
+
+        if (data.type === 'blur-preference') {
+            remoteWantsBlurOff = data.wantsBlurOff;
+            updateBlurState();
+        }
+
+        // ... rest of the existing code ...
+    };
+
+    // Make sure toggleBlur function is defined
+    function toggleBlur(video, enabled) {
+        if (video) {
+            video.style.filter = enabled ? 'blur(10px)' : 'none';
+        }
+    }
+});
+
+// ... rest of the existing code ...
