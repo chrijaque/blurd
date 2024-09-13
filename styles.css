@@ -38,3 +38,29 @@ button {
     font-size: 18px;
     color: #333;
 }
+
+
+/* chat box */
+
+.chat-container {
+    width: 300px;
+    border: 1px solid #ccc;
+    margin-top: 20px;
+}
+
+.chat-messages {
+    height: 200px;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: #f9f9f9;
+}
+
+.chat-input {
+    display: flex;
+    padding: 10px;
+}
+
+#chatInput {
+    flex-grow: 1;
+    margin-right: 10px;
+}

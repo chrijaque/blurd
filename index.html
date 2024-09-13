@@ -25,7 +25,14 @@
         <button id="videoToggleButton" >Turn Off Video</button>
         <button id="toggleBlurButton" onclick="toggleBlur()">Remove Blur</button>    </div>
 
-    <div id="statusMessage">Waiting to start...</div>
+    <!-- Add this after your video elements and before the control buttons -->
+<div class="chat-container">
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input">
+        <input type="text" id="chatInput" placeholder="Type a message...">
+        <button id="sendMessageButton">Send</button>
+    </div>
+</div>
 
     <script src="script.js"></script>
 </body>

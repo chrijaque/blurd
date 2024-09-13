@@ -58,6 +58,8 @@ socket.onmessage = async (event) => {
     } else if (data.type === 'blur-preference') {
         remoteWantsBlurOff = data.wantsBlurOff;
         updateBlurState();
+    } else if (data.type === 'chat') {
+        addMessageToChat('Peer', data.message);
     }
 };
 
@@ -204,27 +206,11 @@ function updateBlurState() {
     localRemoveBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
 }
 
-// Modify the existing socket.onmessage function
-socket.onmessage = async (event) => {
-    const data = JSON.parse(event.data);
-
-    // ... existing code ...
-
-    if (data.type === 'blur-preference') {
-        remoteWantsBlurOff = data.wantsBlurOff;
-        updateBlurState();
-    }
-
-    // ... rest of the existing code ...
-};
-
 // Ensure the blur is applied when the connection is established
 peerConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
     applyInitialBlur();  // Apply blur to both videos when remote stream is added
 };
-
-// ... rest of the existing code ...
 
 // Ensure the Remove Blur button is properly set up
 const removeBlurButton = document.getElementById('removeBlurButton');
@@ -250,8 +236,6 @@ peerConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
     toggleBlur(remoteVideo, true);  // Apply blur to remote video
 };
-
-// ... rest of the existing code ...
 
 // Make sure this code is placed after the DOM has fully loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -301,22 +285,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Remove Blur button not found in the DOM');
     }
 
-    // Modify the existing socket.onmessage function
-    const originalOnMessage = socket.onmessage;
-    socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
-
-        if (data.type === 'blur-preference') {
-            remoteWantsBlurOff = data.wantsBlurOff;
-            console.log('Remote wants blur off:', remoteWantsBlurOff);
-            updateBlurState();
-        } else {
-            // Call the original onmessage handler for other message types
-            await originalOnMessage(event);
-        }
-    };
-
     // Apply initial blur
     toggleBlur(localVideo, true);
     toggleBlur(remoteVideo, true);
@@ -331,7 +299,6 @@ function sendMessage(message) {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
 }
-
 
 // Function to toggle blur
 function toggleBlur() {
@@ -371,22 +338,6 @@ function applyBlur(video, enabled) {
     }
 }
 
-// Modify the existing socket.onmessage function
-const originalOnMessage = socket.onmessage;
-socket.onmessage = async (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Received message:', data);
-
-    if (data.type === 'blur-preference') {
-        remoteWantsBlurOff = data.wantsBlurOff;
-        console.log('Remote wants blur off:', remoteWantsBlurOff);
-        updateBlurState();
-    } else {
-        // Call the original onmessage handler for other message types
-        await originalOnMessage(event);
-    }
-};
-
 // Apply initial blur when the page loads
 window.onload = function() {
     applyBlur(localVideo, true);
@@ -405,3 +356,32 @@ if (typeof sendMessage !== 'function') {
         }
     }
 }
+
+// Add chat functionality
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendMessageButton = document.getElementById('sendMessageButton');
+
+function sendChatMessage() {
+    const message = chatInput.value.trim();
+    if (message) {
+        sendMessage({ type: 'chat', message: message });
+        addMessageToChat('You', message);
+        chatInput.value = '';
+    }
+}
+
+function addMessageToChat(sender, message) {
+    const messageElement = document.createElement('div');
+    messageElement.textContent = `${sender}: ${message}`;
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Add event listeners for the chat input
+sendMessageButton.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') {
+        sendChatMessage();
+    }
+});
