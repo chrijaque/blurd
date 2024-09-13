@@ -55,6 +55,9 @@ socket.onmessage = async (event) => {
         } else {
             iceCandidatesQueue.push(data.candidate);
         }
+    } else if (data.type === 'blur-preference') {
+        remoteWantsBlurOff = data.wantsBlurOff;
+        updateBlurState();
     }
 };
 
@@ -158,3 +161,57 @@ async function initializeCall() {
 
 // Call this function when appropriate (e.g., when a "Start Call" button is clicked)
 // initializeCall();
+
+const localRemoveBlurButton = document.getElementById('localRemoveBlurButton');
+const remoteRemoveBlurButton = document.getElementById('remoteRemoveBlurButton');
+
+let localWantsBlurOff = false;
+let remoteWantsBlurOff = false;
+
+// Function to apply or remove blur filter
+function toggleBlur(video, enabled) {
+    video.style.filter = enabled ? 'blur(10px)' : 'none';
+}
+
+// Apply initial blur to local video
+localVideo.addEventListener('loadedmetadata', () => {
+    toggleBlur(localVideo, true);
+});
+
+// Apply initial blur to remote video
+remoteVideo.addEventListener('loadedmetadata', () => {
+    toggleBlur(remoteVideo, true);
+});
+
+// Toggle local blur preference
+localRemoveBlurButton.addEventListener('click', () => {
+    localWantsBlurOff = !localWantsBlurOff;
+    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+    updateBlurState();
+});
+
+// Function to update blur state based on both users' preferences
+function updateBlurState() {
+    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
+    toggleBlur(localVideo, !shouldRemoveBlur);
+    toggleBlur(remoteVideo, !shouldRemoveBlur);
+    
+    localRemoveBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+    remoteRemoveBlurButton.textContent = remoteWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+}
+
+// Modify the existing socket.onmessage function
+socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    // ... existing code ...
+
+    if (data.type === 'blur-preference') {
+        remoteWantsBlurOff = data.wantsBlurOff;
+        updateBlurState();
+    }
+
+    // ... rest of the existing code ...
+};
+
+// ... rest of the existing code ...
