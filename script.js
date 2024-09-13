@@ -31,7 +31,7 @@ const configuration = {
 
 // Initialize WebSocket
 function initWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.appl');
+    socket = new WebSocket('wss://blurd.adaptable.app');
 
     socket.onopen = () => {
         console.log('WebSocket connected');
