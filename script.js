@@ -63,7 +63,11 @@ socket.onmessage = async (event) => {
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
-    socket.send(JSON.stringify(message));
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+    } else {
+        console.error('WebSocket is not open. ReadyState:', socket.readyState);
+    }
 }
 
 // Access local media
@@ -169,31 +173,22 @@ const remoteRemoveBlurButton = document.getElementById('remoteRemoveBlurButton')
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
 
-// Function to apply or remove blur filter
-function toggleBlur(video, enabled) {
-    video.style.filter = enabled ? 'blur(10px)' : 'none';
-}
-
-// Apply initial blur to local video
-localVideo.addEventListener('loadedmetadata', () => {
-    toggleBlur(localVideo, true);
-});
-
-// Apply initial blur to remote video
-remoteVideo.addEventListener('loadedmetadata', () => {
-    toggleBlur(remoteVideo, true);
-});
-
 // Toggle local blur preference
 localRemoveBlurButton.addEventListener('click', () => {
+    console.log('Local button clicked');
     localWantsBlurOff = !localWantsBlurOff;
+    console.log('Local wants blur off:', localWantsBlurOff);
     sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
     updateBlurState();
 });
 
 // Function to update blur state based on both users' preferences
 function updateBlurState() {
+    console.log('Updating blur state');
+    console.log('Local wants blur off:', localWantsBlurOff);
+    console.log('Remote wants blur off:', remoteWantsBlurOff);
     const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
+    console.log('Should remove blur:', shouldRemoveBlur);
     toggleBlur(localVideo, !shouldRemoveBlur);
     toggleBlur(remoteVideo, !shouldRemoveBlur);
     
@@ -215,12 +210,9 @@ socket.onmessage = async (event) => {
     // ... rest of the existing code ...
 };
 
-// ... rest of the existing code ...
-
-// Ensure the blur is applied when the connection is established
-peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-    toggleBlur(remoteVideo, true);  // Apply blur to remote video
-};
+// Function to apply or remove blur filter
+function toggleBlur(video, enabled) {
+    video.style.filter = enabled ? 'blur(10px)' : 'none';
+}
 
 // ... rest of the existing code ...
