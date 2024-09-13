@@ -3,156 +3,128 @@ const remoteVideo = document.getElementById('remoteVideo');
 const startChatButton = document.getElementById('startChatButton');
 const nextButton = document.getElementById('nextButton');
 const disconnectButton = document.getElementById('disconnectButton');
+const statusMessage = document.getElementById('statusMessage');
 
 let localStream;
 let peerConnection;
-let socket;
 let isOfferer = false;
 let iceCandidatesQueue = [];
 
-// WebRTC configuration using STUN and TURN servers
 const configuration = {
     iceServers: [
         { urls: 'stun:fr-turn1.xirsys.com' },
         {
-            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=", // Replace with actual username
-            credential: "d11f86be-714e-11ef-8726-0242ac120004", // Replace with actual credential
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004",
             urls: [
                 "turn:fr-turn1.xirsys.com:80?transport=udp",
                 "turn:fr-turn1.xirsys.com:3478?transport=udp",
                 "turn:fr-turn1.xirsys.com:80?transport=tcp",
                 "turn:fr-turn1.xirsys.com:3478?transport=tcp",
                 "turns:fr-turn1.xirsys.com:443?transport=tcp",
-                "turns:fr-turn1.xirsys.com:5349?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
             ]
         }
     ]
 };
 
-// Initialize WebSocket
-function initWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.app'); // Replace with actual WebSocket URL
+// WebSocket setup
+const socket = new WebSocket('wss://blurd.adaptable.app');
 
-    socket.onopen = () => {
-        console.log('WebSocket connected');
-        sendMessage({ type: 'ready' });
-    };
+socket.onopen = () => {
+    console.log('WebSocket connected');
+    startChatButton.disabled = false;  // Enable start button once WebSocket is ready
+};
 
-    socket.onmessage = handleSignalingMessage;
-    socket.onerror = (error) => console.error('WebSocket error:', error);
-    socket.onclose = () => console.log('WebSocket closed');
+socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === 'connected') {
+        isOfferer = data.isOfferer;
+        startWebRTC();
+    } else if (data.type === 'offer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+    } else if (data.type === 'answer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    } else if (data.type === 'ice-candidate') {
+        if (peerConnection.remoteDescription) {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } else {
+            iceCandidatesQueue.push(data.candidate);
+        }
+    }
+};
+
+// Send signaling messages over WebSocket
+function sendMessage(message) {
+    socket.send(JSON.stringify(message));
 }
 
-initWebSocket();
-
-// Start the chat and initialize the video stream
+// Access local media
 startChatButton.addEventListener('click', () => {
-    startChatButton.disabled = true;
-
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then((stream) => {
             localStream = stream;
             localVideo.srcObject = stream;
 
-            // Notify the server that we're ready to start
+            statusMessage.textContent = 'Waiting for a peer...';
             sendMessage({ type: 'ready' });
         })
-        .catch((error) => {
-            console.error('Error accessing media devices:', error);
-        });
+        .catch((error) => console.error('Error accessing media devices:', error));
 });
 
-// Handle incoming WebSocket messages
-function handleSignalingMessage(message) {
-    const data = JSON.parse(message.data);
-
-    switch (data.type) {
-        case 'connected':
-            isOfferer = data.isOfferer;
-            startWebRTC();
-            if (isOfferer) createOffer();
-            break;
-        case 'offer':
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
-                .then(() => peerConnection.createAnswer())
-                .then((answer) => peerConnection.setLocalDescription(answer))
-                .then(() => sendMessage({ type: 'answer', answer: peerConnection.localDescription }));
-            break;
-        case 'answer':
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            break;
-        case 'ice-candidate':
-            handleIceCandidate(data.candidate);
-            break;
-    }
-}
-
-function handleIceCandidate(candidate) {
-    if (peerConnection && peerConnection.remoteDescription) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(error => console.error('Error adding ICE candidate:', error));
-    } else {
-        iceCandidatesQueue.push(candidate);
-    }
-}
-
-// Create a WebRTC connection and add the local stream to it
 function startWebRTC() {
-    if (!localStream) {
-        console.error('Local stream is not available');
-        return;
-    }
-
     peerConnection = new RTCPeerConnection(configuration);
 
-    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+    // Add local stream tracks to the peer connection
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
 
+    // When the remote stream is received, display it
     peerConnection.ontrack = (event) => {
         remoteVideo.srcObject = event.streams[0];
     };
 
+    // Send ICE candidates to the other peer
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
         }
     };
 
+    // If we're the offerer, create and send an offer
+    if (isOfferer) {
+        peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => sendMessage({ type: 'offer', offer: peerConnection.localDescription }));
+    }
+
+    // Process any queued ICE candidates once the remote description is set
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected' || 
-            peerConnection.iceConnectionState === 'failed' ||
-            peerConnection.iceConnectionState === 'closed') {
-            handleDisconnect();
+        if (peerConnection.iceConnectionState === 'connected') {
+            iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(new RTCIceCandidate(candidate)));
+            iceCandidatesQueue = [];
         }
     };
-
-    // Process any queued ICE candidates
-    while (iceCandidatesQueue.length) {
-        const candidate = iceCandidatesQueue.shift();
-        handleIceCandidate(candidate);
-    }
-}
-
-// Create an offer if the user is the offerer
-function createOffer() {
-    peerConnection.createOffer()
-        .then((offer) => peerConnection.setLocalDescription(offer))
-        .then(() => sendMessage({ type: 'offer', offer: peerConnection.localDescription }));
-}
-
-// Handle WebSocket messages and ICE candidate exchange
-function sendMessage(message) {
-    socket.send(JSON.stringify(message));
 }
 
 // Disconnect logic
-function handleDisconnect() {
+disconnectButton.addEventListener('click', () => {
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
     }
-    // Reset UI elements and prepare for a new connection
-    startChatButton.disabled = false;
     remoteVideo.srcObject = null;
-    console.log('Disconnected from peer');
-}
+    sendMessage({ type: 'disconnected' });
+});
+
+// Next button to reset the connection
+nextButton.addEventListener('click', () => {
+    disconnectButton.click(); // Trigger disconnect
+    statusMessage.textContent = 'Searching for a new peer...';
+    sendMessage({ type: 'ready' }); // Send ready again for a new connection
+});
