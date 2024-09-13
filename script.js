@@ -173,27 +173,35 @@ const remoteRemoveBlurButton = document.getElementById('remoteRemoveBlurButton')
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
 
+// Function to apply or remove blur filter
+function toggleBlur(video, enabled) {
+    video.style.filter = enabled ? 'blur(10px)' : 'none';
+}
+
+// Apply initial blur to both videos
+function applyInitialBlur() {
+    toggleBlur(localVideo, true);
+    toggleBlur(remoteVideo, true);
+}
+
+// Call this function when the page loads and when the remote stream is added
+applyInitialBlur();
+
 // Toggle local blur preference
 localRemoveBlurButton.addEventListener('click', () => {
-    console.log('Local button clicked');
     localWantsBlurOff = !localWantsBlurOff;
-    console.log('Local wants blur off:', localWantsBlurOff);
     sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
     updateBlurState();
 });
 
 // Function to update blur state based on both users' preferences
 function updateBlurState() {
-    console.log('Updating blur state');
-    console.log('Local wants blur off:', localWantsBlurOff);
-    console.log('Remote wants blur off:', remoteWantsBlurOff);
     const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    console.log('Should remove blur:', shouldRemoveBlur);
     toggleBlur(localVideo, !shouldRemoveBlur);
     toggleBlur(remoteVideo, !shouldRemoveBlur);
     
     localRemoveBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-    remoteRemoveBlurButton.textContent = remoteWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+    localRemoveBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
 }
 
 // Modify the existing socket.onmessage function
@@ -210,9 +218,10 @@ socket.onmessage = async (event) => {
     // ... rest of the existing code ...
 };
 
-// Function to apply or remove blur filter
-function toggleBlur(video, enabled) {
-    video.style.filter = enabled ? 'blur(10px)' : 'none';
-}
+// Ensure the blur is applied when the connection is established
+peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+    applyInitialBlur();  // Apply blur to both videos when remote stream is added
+};
 
 // ... rest of the existing code ...
