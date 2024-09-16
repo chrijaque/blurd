@@ -39,13 +39,24 @@ socket.onopen = () => {
 // Add this function to set up chat functionality
 function setupChat() {
     console.log('Setting up chat');
-    const chatInput = document.getElementById('chatInput');
-    const sendMessageButton = document.getElementById('sendMessageButton');
+    const chatBox = document.getElementById('chatBox');
+    if (!chatBox) {
+        console.error('Chat box not found');
+        return;
+    }
+
+    const chatInput = chatBox.querySelector('input[type="text"]');
+    const sendMessageButton = chatBox.querySelector('button');
     const chatMessages = document.getElementById('chatMessages');
 
     console.log('Chat input found:', !!chatInput);
     console.log('Send button found:', !!sendMessageButton);
     console.log('Chat messages container found:', !!chatMessages);
+
+    if (!chatInput || !sendMessageButton) {
+        console.error('Chat elements not found');
+        return;
+    }
 
     function sendChatMessage() {
         console.log('sendChatMessage function called');
@@ -66,18 +77,14 @@ function setupChat() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    if (sendMessageButton && chatInput) {
-        console.log('Adding event listeners');
-        sendMessageButton.addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendChatMessage();
-            }
-        });
-        console.log('Chat event listeners set up');
-    } else {
-        console.error('Chat elements not found');
-    }
+    console.log('Adding event listeners');
+    sendMessageButton.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            sendChatMessage();
+        }
+    });
+    console.log('Chat event listeners set up');
 }
 
 // Call setupChat when the DOM is fully loaded
@@ -94,16 +101,40 @@ function sendMessage(message) {
     }
 }
 
-// Access local media
-startChatButton.addEventListener('click', async () => {
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        toggleBlur(localVideo, true);  // Apply blur to local video
-        if (statusMessage) statusMessage.textContent = 'Waiting for a peer...';
-        sendMessage({ type: 'ready' });
-    } catch (error) {
-        console.error('Error accessing media devices:', error);
+function startChat() {
+    const statusMessage = document.getElementById('statusMessage');
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            localStream = stream;
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) {
+                localVideo.srcObject = localStream;
+                toggleBlur(localVideo, true);  // Apply blur to local video
+            } else {
+                console.error('Local video element not found');
+            }
+            if (statusMessage) {
+                statusMessage.textContent = 'Waiting for a peer...';
+            } else {
+                console.error('Status message element not found');
+            }
+            sendMessage({ type: 'ready' });
+        })
+        .catch(error => {
+            console.error('Error accessing media devices:', error);
+            if (statusMessage) {
+                statusMessage.textContent = 'Error accessing media devices';
+            }
+        });
+}
+
+// Make sure to call startChat when the start button is clicked
+document.addEventListener('DOMContentLoaded', () => {
+    const startChatButton = document.getElementById('startChatButton');
+    if (startChatButton) {
+        startChatButton.addEventListener('click', startChat);
+    } else {
+        console.error('Start Chat button not found');
     }
 });
 
@@ -199,7 +230,11 @@ let remoteWantsBlurOff = false;
 
 // Function to apply or remove blur filter
 function toggleBlur(video, enabled) {
-    video.style.filter = enabled ? 'blur(10px)' : 'none';
+    if (video) {
+        video.style.filter = enabled ? 'blur(10px)' : 'none';
+    } else {
+        console.error('Video element not found for blur toggle');
+    }
 }
 
 // Apply initial blur to both videos
