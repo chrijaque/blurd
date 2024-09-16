@@ -9,6 +9,7 @@ let localStream;
 let peerConnection;
 let isOfferer = false;
 let iceCandidatesQueue = [];
+let connectionState = 'new'; // 'new', 'connecting', 'connected', 'disconnected', 'closed'
 
 const configuration = {
     iceServers: [
@@ -32,27 +33,26 @@ const configuration = {
 let socket;
 let socketReady = false;
 let reconnectAttempts = 0;
-const maxReconnectAttempts = 10; // Increase the number of attempts
-const reconnectInterval = 5000; // 5 seconds
+const maxReconnectAttempts = 5;
+const reconnectInterval = 5000;
 
 function setupWebSocket() {
-    console.log('Setting up WebSocket');
     socket = new WebSocket('wss://blurd.adaptable.app');
 
     socket.onopen = () => {
         console.log('WebSocket connected');
         socketReady = true;
         reconnectAttempts = 0;
-        startChat();
+        if (connectionState === 'new' || connectionState === 'disconnected') {
+            startConnection();
+        }
     };
 
-    socket.onclose = (event) => {
-        console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
+    socket.onclose = () => {
+        console.log('WebSocket disconnected');
         socketReady = false;
         if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = Math.min(30000, (reconnectAttempts + 1) * 1000); // Exponential backoff, max 30 seconds
-            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts}) in ${delay}ms...`);
-            setTimeout(setupWebSocket, delay);
+            setTimeout(setupWebSocket, reconnectInterval);
             reconnectAttempts++;
         } else {
             console.error('Max reconnect attempts reached. Please refresh the page.');
@@ -131,14 +131,18 @@ function handleIncomingMessage(event) {
         console.log('Received message:', data);
 
         switch(data.type) {
-            case 'ready':
-                isOfferer = true;
-                startConnection();
-                break;
             case 'offer':
+                if (connectionState !== 'new' && connectionState !== 'disconnected') {
+                    console.log('Unexpected offer. Current state:', connectionState);
+                    return;
+                }
                 handleOffer(data.offer);
                 break;
             case 'answer':
+                if (connectionState !== 'connecting') {
+                    console.log('Unexpected answer. Current state:', connectionState);
+                    return;
+                }
                 handleAnswer(data.answer);
                 break;
             case 'ice-candidate':
@@ -158,37 +162,34 @@ function handleIncomingMessage(event) {
 }
 
 async function handleOffer(offer) {
-    if (!peerConnection) {
-        createPeerConnection();
-    }
     try {
+        createPeerConnection();
+        updateConnectionState('connecting');
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate));
+        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate).catch(e => console.error('Error adding queued candidate:', e)));
         iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling offer:', error);
+        updateConnectionState('disconnected');
     }
 }
 
 async function handleAnswer(answer) {
     try {
-        if (peerConnection.signalingState !== "have-local-offer") {
-            console.log('Unexpected answer received. Current state:', peerConnection.signalingState);
-            return;
-        }
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate));
+        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate).catch(e => console.error('Error adding queued candidate:', e)));
         iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling answer:', error);
+        updateConnectionState('disconnected');
     }
 }
 
 function handleIceCandidate(candidate) {
-    if (peerConnection && peerConnection.remoteDescription) {
+    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
             .catch(error => console.error('Error adding received ice candidate:', error));
     } else {
@@ -236,15 +237,25 @@ function startChat() {
 
 function createPeerConnection() {
     if (peerConnection) {
-        console.log('Closing existing peer connection');
         peerConnection.close();
     }
-    
     peerConnection = new RTCPeerConnection(configuration);
-    
+    updateConnectionState('new');
+
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'connected') {
+            updateConnectionState('connected');
+        } else if (peerConnection.iceConnectionState === 'disconnected' || 
+                   peerConnection.iceConnectionState === 'failed') {
+            updateConnectionState('disconnected');
+            handleConnectionLoss();
         }
     };
 
@@ -266,24 +277,28 @@ function createPeerConnection() {
 
 function startConnection() {
     createPeerConnection();
-    if (isOfferer) {
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            })
-            .catch(error => console.error('Error creating offer:', error));
-    } else {
-        sendMessage({ type: 'ready' });
-    }
+    updateConnectionState('connecting');
+    peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        })
+        .catch(error => {
+            console.error('Error creating offer:', error);
+            updateConnectionState('disconnected');
+        });
 }
 
 function handleConnectionLoss() {
     console.log('Handling connection loss');
-    if (peerConnection) {
-        peerConnection.close();
+    if (connectionState !== 'disconnected') {
+        updateConnectionState('disconnected');
+        setTimeout(() => {
+            if (connectionState === 'disconnected') {
+                startConnection();
+            }
+        }, 5000); // Wait 5 seconds before attempting to reconnect
     }
-    startConnection();
 }
 
 // Disconnect logic
