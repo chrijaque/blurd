@@ -32,7 +32,7 @@ const configuration = {
 let socket;
 let socketReady = false;
 let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
+const maxReconnectAttempts = 10; // Increase the number of attempts
 const reconnectInterval = 5000; // 5 seconds
 
 function setupWebSocket() {
@@ -50,8 +50,9 @@ function setupWebSocket() {
         console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
         socketReady = false;
         if (reconnectAttempts < maxReconnectAttempts) {
-            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
-            setTimeout(setupWebSocket, reconnectInterval);
+            const delay = Math.min(30000, (reconnectAttempts + 1) * 1000); // Exponential backoff, max 30 seconds
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts}) in ${delay}ms...`);
+            setTimeout(setupWebSocket, delay);
             reconnectAttempts++;
         } else {
             console.error('Max reconnect attempts reached. Please refresh the page.');
