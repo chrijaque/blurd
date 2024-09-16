@@ -33,6 +33,7 @@ let socket;
 let socketReady = false;
 
 function setupWebSocket() {
+    console.log('Setting up WebSocket');
     socket = new WebSocket('wss://blurd.adaptable.app');
 
     socket.onopen = () => {
@@ -73,78 +74,98 @@ function setupUIElements() {
 }
 
 function setupChat() {
+    console.log('Setting up chat');
     const chatInput = document.getElementById('chatInput');
     const sendButton = document.getElementById('sendMessageButton');
-    
-    if (chatInput && sendButton) {
+    const chatMessages = document.getElementById('chatMessages');
+
+    console.log('Chat input found:', !!chatInput);
+    console.log('Send button found:', !!sendButton);
+    console.log('Chat messages container found:', !!chatMessages);
+
+    if (chatInput && sendButton && chatMessages) {
         sendButton.addEventListener('click', sendChatMessage);
         chatInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 sendChatMessage();
             }
         });
+        console.log('Chat event listeners set up');
     } else {
-        console.error('Chat elements not found');
+        console.error('Some chat elements are missing');
     }
 }
 
 function sendChatMessage() {
+    console.log('sendChatMessage function called');
     const chatInput = document.getElementById('chatInput');
+    if (!chatInput) {
+        console.error('Chat input element not found');
+        return;
+    }
     const message = chatInput.value.trim();
     if (message) {
+        console.log('Attempting to send message:', message);
         sendMessage({ type: 'chat', message: message });
         addMessageToChat('You', message);
         chatInput.value = '';
+    } else {
+        console.log('Empty message, not sending');
     }
 }
 
 function handleIncomingMessage(event) {
-    const data = JSON.parse(event.data);
-    console.log('Received message:', data);
+    try {
+        const data = JSON.parse(event.data);
+        console.log('Received message:', data);
 
-    switch(data.type) {
-        case 'ready':
-            if (!peerConnection) {
-                createPeerConnection();
-            }
-            peerConnection.createOffer()
-                .then(offer => peerConnection.setLocalDescription(offer))
-                .then(() => {
-                    sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-                });
-            break;
-        case 'offer':
-            if (!peerConnection) {
-                createPeerConnection();
-            }
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
-                .then(() => peerConnection.createAnswer())
-                .then(answer => peerConnection.setLocalDescription(answer))
-                .then(() => {
-                    sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-                });
-            break;
-        case 'answer':
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            break;
-        case 'ice-candidate':
-            try {
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (e) {
-                console.error('Error adding received ice candidate', e);
-            }
-            break;
-        case 'chat':
-            addMessageToChat('Peer', data.message);
-            break;
-        case 'blur-preference':
-            remoteWantsBlurOff = data.wantsBlurOff;
-            updateBlurState();
-            break;
+        switch(data.type) {
+            case 'ready':
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
+                peerConnection.createOffer()
+                    .then(offer => peerConnection.setLocalDescription(offer))
+                    .then(() => {
+                        sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                    });
+                break;
+            case 'offer':
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                    .then(() => peerConnection.createAnswer())
+                    .then(answer => peerConnection.setLocalDescription(answer))
+                    .then(() => {
+                        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+                    });
+                break;
+            case 'answer':
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                break;
+            case 'ice-candidate':
+                try {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (e) {
+                    console.error('Error adding received ice candidate', e);
+                }
+                break;
+            case 'chat':
+                addMessageToChat('Peer', data.message);
+                break;
+            case 'blur-preference':
+                remoteWantsBlurOff = data.wantsBlurOff;
+                updateBlurState();
+                break;
+        }
+    } catch (error) {
+        console.error('Error parsing incoming message:', error);
     }
 }
 
 function sendMessage(message) {
+    console.log('sendMessage function called with:', message);
     if (socketReady) {
         socket.send(JSON.stringify(message));
         console.log('Message sent:', message);
@@ -410,5 +431,18 @@ function updateStatus(message) {
         statusMessage.textContent = message;
     } else {
         console.error('Status message element not found');
+    }
+}
+
+function addMessageToChat(sender, message) {
+    console.log('Adding message to chat:', sender, message);
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = `${sender}: ${message}`;
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    } else {
+        console.error('Chat messages container not found');
     }
 }
