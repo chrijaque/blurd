@@ -38,11 +38,17 @@ socket.onopen = () => {
 
 // Add this function to set up chat functionality
 function setupChat() {
-    const chatInput = document.querySelector('[data-chat-input]');
-    const sendMessageButton = document.querySelector('[data-send-message]');
+    console.log('Setting up chat');
+    const chatInput = document.getElementById('debugChatInput');
+    const sendMessageButton = document.getElementById('debugSendButton');
     const chatMessages = document.getElementById('chatMessages');
 
+    console.log('Chat input found:', !!chatInput);
+    console.log('Send button found:', !!sendMessageButton);
+    console.log('Chat messages container found:', !!chatMessages);
+
     function sendChatMessage() {
+        console.log('sendChatMessage function called');
         const message = chatInput.value.trim();
         if (message) {
             console.log('Attempting to send message:', message);
@@ -53,6 +59,7 @@ function setupChat() {
     }
 
     function addMessageToChat(sender, message) {
+        console.log('Adding message to chat:', sender, message);
         const messageElement = document.createElement('div');
         messageElement.textContent = `${sender}: ${message}`;
         chatMessages.appendChild(messageElement);
@@ -60,9 +67,14 @@ function setupChat() {
     }
 
     if (sendMessageButton && chatInput) {
-        sendMessageButton.addEventListener('click', sendChatMessage);
+        console.log('Adding event listeners');
+        sendMessageButton.addEventListener('click', () => {
+            console.log('Send button clicked');
+            sendChatMessage();
+        });
         chatInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
+                console.log('Enter key pressed in chat input');
                 sendChatMessage();
             }
         });
@@ -87,13 +99,17 @@ function setupChat() {
 }
 
 // Call setupChat after the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', setupChat);
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded');
+    setupChat();
+});
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
+    console.log('sendMessage function called with:', message);
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent:', message);
+        console.log('Message sent via WebSocket:', message);
     } else {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
@@ -319,9 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Make sure this function is defined in the global scope
 function sendMessage(message) {
+    console.log('sendMessage function called with:', message);
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent:', message);
+        console.log('Message sent via WebSocket:', message);
     } else {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
