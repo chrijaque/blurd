@@ -36,31 +36,29 @@ socket.onopen = () => {
     startChatButton.disabled = false;  // Enable start button once WebSocket is ready
 };
 
-// Add these new variables for chat functionality
-const chatMessages = document.getElementById('chatMessages');
-const chatInput = document.getElementById('chatInput');
-const sendMessageButton = document.getElementById('sendMessageButton');
+// Add this function to set up chat functionality
+function setupChat() {
+    const chatInput = document.querySelector('[data-chat-input]');
+    const sendMessageButton = document.querySelector('[data-send-message]');
+    const chatMessages = document.getElementById('chatMessages');
 
-// Add chat functionality
-function sendChatMessage() {
-    const message = chatInput.value.trim();
-    if (message) {
-        console.log('Attempting to send message:', message);
-        sendMessage({ type: 'chat', message: message });
-        addMessageToChat('You', message);
-        chatInput.value = '';
+    function sendChatMessage() {
+        const message = chatInput.value.trim();
+        if (message) {
+            console.log('Attempting to send message:', message);
+            sendMessage({ type: 'chat', message: message });
+            addMessageToChat('You', message);
+            chatInput.value = '';
+        }
     }
-}
 
-function addMessageToChat(sender, message) {
-    const messageElement = document.createElement('div');
-    messageElement.textContent = `${sender}: ${message}`;
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+    function addMessageToChat(sender, message) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = `${sender}: ${message}`;
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
-// Add event listeners for the chat input
-document.addEventListener('DOMContentLoaded', () => {
     if (sendMessageButton && chatInput) {
         sendMessageButton.addEventListener('click', sendChatMessage);
         chatInput.addEventListener('keypress', (event) => {
@@ -72,37 +70,24 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('Chat elements not found');
     }
-});
 
-// Modify the existing socket.onmessage function
-socket.onmessage = async (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Received message:', data);
+    // Modify the existing socket.onmessage function
+    const originalOnMessage = socket.onmessage;
+    socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received message:', data);
 
-    if (data.type === 'connected') {
-        isOfferer = data.isOfferer;
-        startWebRTC();
-    } else if (data.type === 'offer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-    } else if (data.type === 'answer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    } else if (data.type === 'ice-candidate') {
-        if (peerConnection.remoteDescription) {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        if (data.type === 'chat') {
+            addMessageToChat('Peer', data.message);
         } else {
-            iceCandidatesQueue.push(data.candidate);
+            // Call the original onmessage handler for other message types
+            await originalOnMessage(event);
         }
-    } else if (data.type === 'blur-preference') {
-        remoteWantsBlurOff = data.wantsBlurOff;
-        updateBlurState();
-    } else if (data.type === 'chat') {
-        console.log('Received chat message:', data.message);
-        addMessageToChat('Peer', data.message);
-    }
-};
+    };
+}
+
+// Call setupChat after the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', setupChat);
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
