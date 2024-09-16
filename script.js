@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket();
     setupChat();
     setupUIElements();
+    setupLocalStream();
 });
 
 function setupUIElements() {
@@ -399,3 +400,29 @@ window.onbeforeunload = () => {
         socket.close();
     }
 };
+
+function setupLocalStream() {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            localStream = stream;
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) {
+                localVideo.srcObject = stream;
+            }
+            // If WebSocket is already connected, start the connection
+            if (socketReady) {
+                sendMessage({ type: 'ready' });
+            }
+        })
+        .catch(error => {
+            console.error('Error accessing media devices:', error);
+        });
+}
+
+// Call this function when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    setupWebSocket();
+    setupChat();
+    setupUIElements();
+    setupLocalStream();
+});
