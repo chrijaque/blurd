@@ -267,186 +267,53 @@ nextButton.addEventListener('click', () => {
     sendMessage({ type: 'ready' }); // Send ready again for a new connection
 });
 
-const localRemoveBlurButton = document.getElementById('localRemoveBlurButton');
-const remoteRemoveBlurButton = document.getElementById('remoteRemoveBlurButton');
-
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
 
-// Function to apply or remove blur filter
+function applyInitialBlur() {
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    toggleBlur(localVideo, true);
+    toggleBlur(remoteVideo, true);
+}
+
 function toggleBlur(video, enabled) {
     if (video) {
         video.style.filter = enabled ? 'blur(10px)' : 'none';
-    } else {
-        console.error('Video element not found for blur toggle');
     }
 }
 
-// Apply initial blur to both videos
-function applyInitialBlur() {
-    toggleBlur(localVideo, true);
-    toggleBlur(remoteVideo, true);
-}
-
-// Call this function when the page loads and when the remote stream is added
-applyInitialBlur();
-
-// Toggle local blur preference
-localRemoveBlurButton.addEventListener('click', () => {
-    localWantsBlurOff = !localWantsBlurOff;
-    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-    updateBlurState();
-});
-
-// Function to update blur state based on both users' preferences
-function updateBlurState() {
-    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    toggleBlur(localVideo, !shouldRemoveBlur);
-    toggleBlur(remoteVideo, !shouldRemoveBlur);
-    
-    localRemoveBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-    localRemoveBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
-}
-
-// Ensure the blur is applied when the connection is established
-peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-    applyInitialBlur();  // Apply blur to both videos when remote stream is added
-};
-
-// Ensure the Remove Blur button is properly set up
-const removeBlurButton = document.getElementById('removeBlurButton');
-
-removeBlurButton.addEventListener('click', () => {
-    localWantsBlurOff = !localWantsBlurOff;
-    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-    updateBlurState();
-});
-
-// Update the updateBlurState function
-function updateBlurState() {
-    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    toggleBlur(localVideo, !shouldRemoveBlur);
-    toggleBlur(remoteVideo, !shouldRemoveBlur);
-    
-    removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-    removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
-}
-
-// Modify the peerConnection.ontrack event handler
-peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-    toggleBlur(remoteVideo, true);  // Apply blur to remote video
-};
-
-// Make sure this code is placed after the DOM has fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    const removeBlurButton = document.getElementById('removeBlurButton');
-    let localWantsBlurOff = false;
-    let remoteWantsBlurOff = false;
-
-    console.log('DOM fully loaded');
-
-    function toggleBlur(video, enabled) {
-        if (video) {
-            video.style.filter = enabled ? 'blur(10px)' : 'none';
-            console.log(`Blur ${enabled ? 'applied to' : 'removed from'} ${video.id}`);
-        } else {
-            console.error('Video element not found');
-        }
-    }
-
-    function updateBlurState() {
-        console.log('Updating blur state');
-        console.log('Local wants blur off:', localWantsBlurOff);
-        console.log('Remote wants blur off:', remoteWantsBlurOff);
-        
-        const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-        toggleBlur(localVideo, !shouldRemoveBlur);
-        toggleBlur(remoteVideo, !shouldRemoveBlur);
-        
-        if (removeBlurButton) {
-            removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-            removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
-            console.log('Button updated:', removeBlurButton.textContent);
-        } else {
-            console.error('Remove Blur button not found');
-        }
-    }
-
-    if (removeBlurButton) {
-        removeBlurButton.addEventListener('click', () => {
-            console.log('Remove Blur button clicked');
-            localWantsBlurOff = !localWantsBlurOff;
-            console.log('Local wants blur off:', localWantsBlurOff);
-            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-            updateBlurState();
-        });
-        console.log('Event listener added to Remove Blur button');
-    } else {
-        console.error('Remove Blur button not found in the DOM');
-    }
-
-    // Apply initial blur
-    toggleBlur(localVideo, true);
-    toggleBlur(remoteVideo, true);
-});
-
-// Make sure this function is defined in the global scope
-function sendMessage(message) {
-    console.log('sendMessage function called with:', message);
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(message));
-        console.log('Message sent via WebSocket:', message);
-    } else {
-        console.error('WebSocket is not open. ReadyState:', socket ? socket.readyState : 'socket not initialized');
-    }
-}
-
-// Function to toggle blur
-function toggleBlur() {
-    console.log('Toggle blur function called');
-    localWantsBlurOff = !localWantsBlurOff;
-    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-    updateBlurState();
-}
-
-// Function to update blur state
 function updateBlurState() {
     console.log('Updating blur state');
     console.log('Local wants blur off:', localWantsBlurOff);
     console.log('Remote wants blur off:', remoteWantsBlurOff);
     
     const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    applyBlur(localVideo, !shouldRemoveBlur);
-    applyBlur(remoteVideo, !shouldRemoveBlur);
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    toggleBlur(localVideo, !shouldRemoveBlur);
+    toggleBlur(remoteVideo, !shouldRemoveBlur);
     
-    const toggleBlurButton = document.getElementById('toggleBlurButton');
-    if (toggleBlurButton) {
-        toggleBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-        toggleBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
-        console.log('Button updated:', toggleBlurButton.textContent);
-    } else {
-        console.error('Toggle Blur button not found');
+    const removeBlurButton = document.getElementById('removeBlurButton');
+    if (removeBlurButton) {
+        removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
+        removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
     }
 }
 
-// Function to apply or remove blur
-function applyBlur(video, enabled) {
-    if (video) {
-        video.style.filter = enabled ? 'blur(10px)' : 'none';
-        console.log(`Blur ${enabled ? 'applied to' : 'removed from'} ${video.id}`);
-    } else {
-        console.error('Video element not found');
+function setupUIElements() {
+    const removeBlurButton = document.getElementById('removeBlurButton');
+    if (removeBlurButton) {
+        removeBlurButton.addEventListener('click', () => {
+            localWantsBlurOff = !localWantsBlurOff;
+            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+            updateBlurState();
+        });
     }
 }
 
-// Apply initial blur when the page loads
-window.onload = function() {
-    applyBlur(localVideo, true);
-    applyBlur(remoteVideo, true);
-    console.log('Initial blur applied');
-};
+// Call this function when the page loads and when the remote stream is added
+applyInitialBlur();
 
 function updateStatus(message) {
     const statusMessage = document.getElementById('statusMessage');
