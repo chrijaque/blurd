@@ -110,7 +110,6 @@ function setupChat() {
 }
 
 function sendChatMessage() {
-    console.log('sendChatMessage function called');
     const chatInput = document.getElementById('chatInput');
     if (!chatInput) {
         console.error('Chat input element not found');
