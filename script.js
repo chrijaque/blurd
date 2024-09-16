@@ -121,18 +121,13 @@ function handleIncomingMessage(event) {
 
         switch(data.type) {
             case 'ready':
-                if (!peerConnection) {
-                    createPeerConnection();
-                }
-                peerConnection.createOffer()
-                    .then(offer => peerConnection.setLocalDescription(offer))
-                    .then(() => {
-                        sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-                    });
+                isOfferer = true;
+                startConnection();
                 break;
             case 'offer':
-                if (!peerConnection) {
-                    createPeerConnection();
+                if (peerConnection.signalingState != "stable") {
+                    console.log('Ignoring offer in non-stable state');
+                    return;
                 }
                 peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
                     .then(() => peerConnection.createAnswer())
@@ -196,6 +191,11 @@ function startChat() {
 }
 
 function createPeerConnection() {
+    if (peerConnection) {
+        console.log('Closing existing peer connection');
+        peerConnection.close();
+    }
+    
     peerConnection = new RTCPeerConnection(configuration);
     
     peerConnection.onicecandidate = event => {
@@ -206,25 +206,48 @@ function createPeerConnection() {
 
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected') {
-            console.log('Peer disconnected. Attempting to reconnect...');
-            startChat();
+        if (peerConnection.iceConnectionState === 'disconnected' || 
+            peerConnection.iceConnectionState === 'failed') {
+            handleConnectionLoss();
         }
     };
 
     peerConnection.ontrack = event => {
         const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo) {
+        if (remoteVideo && event.streams && event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
             toggleBlur(remoteVideo, true);
         }
     };
 
+    // Add local stream
     localStream.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStream);
     });
 
     console.log('Peer connection created');
+}
+
+function startConnection() {
+    createPeerConnection();
+    if (isOfferer) {
+        peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => console.error('Error creating offer:', error));
+    } else {
+        sendMessage({ type: 'ready' });
+    }
+}
+
+function handleConnectionLoss() {
+    console.log('Handling connection loss');
+    if (peerConnection) {
+        peerConnection.close();
+    }
+    startConnection();
 }
 
 // Disconnect logic
@@ -446,3 +469,12 @@ function addMessageToChat(sender, message) {
         console.error('Chat messages container not found');
     }
 }
+
+window.onbeforeunload = () => {
+    if (peerConnection) {
+        peerConnection.close();
+    }
+    if (socket) {
+        socket.close();
+    }
+};
