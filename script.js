@@ -51,6 +51,7 @@ function setupWebSocket() {
     socket.onclose = () => {
         console.log('WebSocket disconnected');
         socketReady = false;
+        updateConnectionState('disconnected');
         if (reconnectAttempts < maxReconnectAttempts) {
             setTimeout(setupWebSocket, reconnectInterval);
             reconnectAttempts++;
@@ -126,38 +127,36 @@ function sendChatMessage() {
 }
 
 function handleIncomingMessage(event) {
-    try {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
 
-        switch(data.type) {
-            case 'offer':
-                if (connectionState !== 'new' && connectionState !== 'disconnected') {
-                    console.log('Unexpected offer. Current state:', connectionState);
-                    return;
-                }
-                handleOffer(data.offer);
-                break;
-            case 'answer':
-                if (connectionState !== 'connecting') {
-                    console.log('Unexpected answer. Current state:', connectionState);
-                    return;
-                }
-                handleAnswer(data.answer);
-                break;
-            case 'ice-candidate':
-                handleIceCandidate(data.candidate);
-                break;
-            case 'chat':
-                addMessageToChat('Peer', data.message);
-                break;
-            case 'blur-preference':
-                remoteWantsBlurOff = data.wantsBlurOff;
-                updateBlurState();
-                break;
-        }
-    } catch (error) {
-        console.error('Error parsing incoming message:', error);
+    switch(data.type) {
+        case 'waiting':
+            console.log('Waiting for peer...');
+            updateConnectionState('waiting');
+            break;
+        case 'connected':
+            console.log('Peer connected, isOfferer:', data.isOfferer);
+            if (data.isOfferer) {
+                startConnection();
+            }
+            break;
+        case 'offer':
+            handleOffer(data.offer);
+            break;
+        case 'answer':
+            handleAnswer(data.answer);
+            break;
+        case 'ice-candidate':
+            handleIceCandidate(data.candidate);
+            break;
+        case 'chat':
+            addMessageToChat('Peer', data.message);
+            break;
+        case 'blur-preference':
+            remoteWantsBlurOff = data.wantsBlurOff;
+            updateBlurState();
+            break;
     }
 }
 
@@ -268,9 +267,13 @@ function createPeerConnection() {
     };
 
     // Add local stream
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    } else {
+        console.error('Local stream not available');
+    }
 
     console.log('Peer connection created');
 }
