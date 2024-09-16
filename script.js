@@ -136,26 +136,13 @@ function handleIncomingMessage(event) {
                 startConnection();
                 break;
             case 'offer':
-                if (peerConnection.signalingState != "stable") {
-                    console.log('Ignoring offer in non-stable state');
-                    return;
-                }
-                peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
-                    .then(() => peerConnection.createAnswer())
-                    .then(answer => peerConnection.setLocalDescription(answer))
-                    .then(() => {
-                        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-                    });
+                handleOffer(data.offer);
                 break;
             case 'answer':
-                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                handleAnswer(data.answer);
                 break;
             case 'ice-candidate':
-                try {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (e) {
-                    console.error('Error adding received ice candidate', e);
-                }
+                handleIceCandidate(data.candidate);
                 break;
             case 'chat':
                 addMessageToChat('Peer', data.message);
@@ -167,6 +154,45 @@ function handleIncomingMessage(event) {
         }
     } catch (error) {
         console.error('Error parsing incoming message:', error);
+    }
+}
+
+async function handleOffer(offer) {
+    if (!peerConnection) {
+        createPeerConnection();
+    }
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate));
+        iceCandidatesQueue = [];
+    } catch (error) {
+        console.error('Error handling offer:', error);
+    }
+}
+
+async function handleAnswer(answer) {
+    try {
+        if (peerConnection.signalingState !== "have-local-offer") {
+            console.log('Unexpected answer received. Current state:', peerConnection.signalingState);
+            return;
+        }
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate));
+        iceCandidatesQueue = [];
+    } catch (error) {
+        console.error('Error handling answer:', error);
+    }
+}
+
+function handleIceCandidate(candidate) {
+    if (peerConnection && peerConnection.remoteDescription) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(error => console.error('Error adding received ice candidate:', error));
+    } else {
+        iceCandidatesQueue.push(candidate);
     }
 }
 
@@ -219,14 +245,6 @@ function createPeerConnection() {
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
-        }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected' || 
-            peerConnection.iceConnectionState === 'failed') {
-            handleConnectionLoss();
         }
     };
 
