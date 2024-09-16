@@ -43,18 +43,12 @@ const sendMessageButton = document.getElementById('sendMessageButton');
 
 // Add chat functionality
 function sendChatMessage() {
-    if (socket.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket is not open. Cannot send message.');
-        return;
-    }
     const message = chatInput.value.trim();
     if (message) {
         console.log('Attempting to send message:', message);
         sendMessage({ type: 'chat', message: message });
         addMessageToChat('You', message);
         chatInput.value = '';
-    } else {
-        console.log('Message is empty, not sending');
     }
 }
 
@@ -114,7 +108,7 @@ socket.onmessage = async (event) => {
 function sendMessage(message) {
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent via WebSocket:', message);
+        console.log('Message sent:', message);
     } else {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
