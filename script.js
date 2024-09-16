@@ -52,9 +52,15 @@ function setupChat() {
         const message = chatInput.value.trim();
         if (message) {
             console.log('Attempting to send message:', message);
-            sendMessage({ type: 'chat', message: message });
-            addMessageToChat('You', message);
-            chatInput.value = '';
+            sendMessage({ type: 'chat', message: message })
+                .then(() => {
+                    addMessageToChat('You', message);
+                    chatInput.value = '';
+                })
+                .catch((error) => {
+                    console.error('Failed to send message:', error);
+                    alert('Failed to send message. Please try again.');
+                });
         }
     }
 
@@ -83,8 +89,8 @@ function setupChat() {
         console.error('Chat elements not found');
     }
 
-    // Modify the existing socket.onmessage function
-    const originalOnMessage = socket.onmessage;
+    // Modify the socket.onmessage handler
+    let originalOnMessage = socket.onmessage || (() => {});
     socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
         console.log('Received message:', data);
@@ -93,7 +99,7 @@ function setupChat() {
             addMessageToChat('Peer', data.message);
         } else {
             // Call the original onmessage handler for other message types
-            await originalOnMessage(event);
+            originalOnMessage(event);
         }
     };
 }
@@ -106,13 +112,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
-    console.log('sendMessage function called with:', message);
+    console.log('Attempting to send message:', message);
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent via WebSocket:', message);
+        console.log('Message sent:', message);
     } else {
-        console.error('WebSocket is not open. ReadyState:', socket.readyState);
+        console.error('WebSocket is not open. Attempting to reconnect...');
+        reconnectWebSocket(() => sendMessage(message));
     }
+}
+
+// Add a reconnection function
+function reconnectWebSocket(callback) {
+    console.log('Attempting to reconnect WebSocket...');
+    socket = new WebSocket('wss://blurd.adaptable.app');
+    
+    socket.onopen = () => {
+        console.log('WebSocket reconnected');
+        if (callback) callback();
+    };
+    
+    socket.onerror = (error) => {
+        console.error('WebSocket reconnection error:', error);
+    };
+    
+    // Re-attach the message handler
+    let originalOnMessage = socket.onmessage || (() => {});
+    socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received message:', data);
+
+        if (data.type === 'chat') {
+            addMessageToChat('Peer', data.message);
+        } else {
+            originalOnMessage(event);
+        }
+    };
 }
 
 // Access local media
