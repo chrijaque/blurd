@@ -36,6 +36,51 @@ socket.onopen = () => {
     startChatButton.disabled = false;  // Enable start button once WebSocket is ready
 };
 
+// Add these new variables for chat functionality
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendMessageButton = document.getElementById('sendMessageButton');
+
+// Add chat functionality
+function sendChatMessage() {
+    if (socket.readyState !== WebSocket.OPEN) {
+        console.error('WebSocket is not open. Cannot send message.');
+        return;
+    }
+    const message = chatInput.value.trim();
+    if (message) {
+        console.log('Attempting to send message:', message);
+        sendMessage({ type: 'chat', message: message });
+        addMessageToChat('You', message);
+        chatInput.value = '';
+    } else {
+        console.log('Message is empty, not sending');
+    }
+}
+
+function addMessageToChat(sender, message) {
+    const messageElement = document.createElement('div');
+    messageElement.textContent = `${sender}: ${message}`;
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Add event listeners for the chat input
+document.addEventListener('DOMContentLoaded', () => {
+    if (sendMessageButton && chatInput) {
+        sendMessageButton.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+        console.log('Chat event listeners set up');
+    } else {
+        console.error('Chat elements not found');
+    }
+});
+
+// Modify the existing socket.onmessage function
 socket.onmessage = async (event) => {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
@@ -347,61 +392,3 @@ window.onload = function() {
     applyBlur(remoteVideo, true);
     console.log('Initial blur applied');
 };
-
-// Make sure sendMessage function is defined globally
-if (typeof sendMessage !== 'function') {
-    function sendMessage(message) {
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(message));
-            console.log('Message sent:', message);
-        } else {
-            console.error('WebSocket is not open. ReadyState:', socket.readyState);
-        }
-    }
-}
-
-// Add chat functionality
-const chatMessages = document.getElementById('chatMessages');
-const chatInput = document.getElementById('chatInput');
-const sendMessageButton = document.getElementById('sendMessageButton');
-
-function sendChatMessage() {
-    if (socket.readyState !== WebSocket.OPEN) {
-        console.error('WebSocket is not open. Cannot send message.');
-        return;
-    }
-    const message = chatInput.value.trim();
-    if (message) {
-        console.log('Attempting to send message:', message);
-        sendMessage({ type: 'chat', message: message });
-        addMessageToChat('You', message);
-        chatInput.value = '';
-    } else {
-        console.log('Message is empty, not sending');
-    }
-}
-
-function addMessageToChat(sender, message) {
-    const messageElement = document.createElement('div');
-    messageElement.textContent = `${sender}: ${message}`;
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Add event listeners for the chat input
-document.addEventListener('DOMContentLoaded', () => {
-    const sendMessageButton = document.getElementById('sendMessageButton');
-    const chatInput = document.getElementById('chatInput');
-
-    if (sendMessageButton && chatInput) {
-        sendMessageButton.addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendChatMessage();
-            }
-        });
-        console.log('Chat event listeners set up');
-    } else {
-        console.error('Chat elements not found');
-    }
-});
