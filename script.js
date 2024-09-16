@@ -102,95 +102,93 @@ function sendMessage(message) {
 }
 
 function startChat() {
-    const statusMessage = document.getElementById('statusMessage');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;
             const localVideo = document.getElementById('localVideo');
             if (localVideo) {
                 localVideo.srcObject = localStream;
-                toggleBlur(localVideo, true);  // Apply blur to local video
+                toggleBlur(localVideo, true);
             } else {
                 console.error('Local video element not found');
             }
-            if (statusMessage) {
-                statusMessage.textContent = 'Waiting for a peer...';
-            } else {
-                console.error('Status message element not found');
-            }
+            updateStatus('Waiting for a peer...');
+            createPeerConnection();
             sendMessage({ type: 'ready' });
         })
         .catch(error => {
             console.error('Error accessing media devices:', error);
-            if (statusMessage) {
-                statusMessage.textContent = 'Error accessing media devices';
-            }
+            updateStatus('Error accessing media devices');
         });
 }
 
-// Make sure to call startChat when the start button is clicked
-document.addEventListener('DOMContentLoaded', () => {
-    const startChatButton = document.getElementById('startChatButton');
-    if (startChatButton) {
-        startChatButton.addEventListener('click', startChat);
-    } else {
-        console.error('Start Chat button not found');
-    }
-});
-
-async function startWebRTC() {
-    if (!localStream) {
-        console.error('Local stream is not available');
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream;
-            toggleBlur(localVideo, true);  // Apply blur to local video
-        } catch (error) {
-            console.error('Error accessing media devices:', error);
-            return;
-        }
-    }
-
+function createPeerConnection() {
     peerConnection = new RTCPeerConnection(configuration);
-
-    // Add local stream tracks to the peer connection
-    if (localStream) { // Add this check
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-    } else {
-        console.error('Local stream is still not available');
-        return;
-    }
-
-    // When the remote stream is received, display it
-    peerConnection.ontrack = (event) => {
-        remoteVideo.srcObject = event.streams[0];
-        toggleBlur(remoteVideo, true);  // Apply blur to remote video
-    };
-
-    // Send ICE candidates to the other peer
-    peerConnection.onicecandidate = (event) => {
+    
+    peerConnection.onicecandidate = event => {
         if (event.candidate) {
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
         }
     };
 
-    // If we're the offerer, create and send an offer
-    if (isOfferer) {
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => sendMessage({ type: 'offer', offer: peerConnection.localDescription }));
-    }
-
-    // Process any queued ICE candidates once the remote description is set
-    peerConnection.oniceconnectionstatechange = () => {
-        if (peerConnection.iceConnectionState === 'connected') {
-            iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(new RTCIceCandidate(candidate)));
-            iceCandidatesQueue = [];
+    peerConnection.ontrack = event => {
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo) {
+            remoteVideo.srcObject = event.streams[0];
+            toggleBlur(remoteVideo, true);
         }
     };
+
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    console.log('Peer connection created');
 }
+
+socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
+
+    switch(data.type) {
+        case 'ready':
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                });
+            break;
+        case 'offer':
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+            break;
+        case 'answer':
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            break;
+        case 'ice-candidate':
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+                console.error('Error adding received ice candidate', e);
+            }
+            break;
+        case 'chat':
+            addMessageToChat('Peer', data.message);
+            break;
+        case 'blur-preference':
+            remoteWantsBlurOff = data.wantsBlurOff;
+            updateBlurState();
+            break;
+    }
+};
 
 // Disconnect logic
 disconnectButton.addEventListener('click', () => {
@@ -208,19 +206,6 @@ nextButton.addEventListener('click', () => {
     statusMessage.textContent = 'Searching for a new peer...';
     sendMessage({ type: 'ready' }); // Send ready again for a new connection
 });
-
-async function initializeCall() {
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        startWebRTC();
-    } catch (error) {
-        console.error('Error accessing media devices:', error);
-    }
-}
-
-// Call this function when appropriate (e.g., when a "Start Call" button is clicked)
-// initializeCall();
 
 const localRemoveBlurButton = document.getElementById('localRemoveBlurButton');
 const remoteRemoveBlurButton = document.getElementById('remoteRemoveBlurButton');
@@ -403,31 +388,11 @@ window.onload = function() {
     console.log('Initial blur applied');
 };
 
-// Remove any references to originalOnMessage
-socket.onmessage = async (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Received message:', data);
-
-    if (data.type === 'connected') {
-        isOfferer = data.isOfferer;
-        startWebRTC();
-    } else if (data.type === 'offer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-    } else if (data.type === 'answer') {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-    } else if (data.type === 'ice-candidate') {
-        if (peerConnection.remoteDescription) {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } else {
-            iceCandidatesQueue.push(data.candidate);
-        }
-    } else if (data.type === 'blur-preference') {
-        remoteWantsBlurOff = data.wantsBlurOff;
-        updateBlurState();
-    } else if (data.type === 'chat') {
-        addMessageToChat('Peer', data.message);
+function updateStatus(message) {
+    const statusMessage = document.getElementById('statusMessage');
+    if (statusMessage) {
+        statusMessage.textContent = message;
+    } else {
+        console.error('Status message element not found');
     }
-};
+}
