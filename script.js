@@ -39,8 +39,8 @@ socket.onopen = () => {
 // Add this function to set up chat functionality
 function setupChat() {
     console.log('Setting up chat');
-    const chatInput = document.getElementById('debugChatInput');
-    const sendMessageButton = document.getElementById('debugSendButton');
+    const chatInput = document.getElementById('chatInput');
+    const sendMessageButton = document.getElementById('sendMessageButton');
     const chatMessages = document.getElementById('chatMessages');
 
     console.log('Chat input found:', !!chatInput);
@@ -52,15 +52,9 @@ function setupChat() {
         const message = chatInput.value.trim();
         if (message) {
             console.log('Attempting to send message:', message);
-            sendMessage({ type: 'chat', message: message })
-                .then(() => {
-                    addMessageToChat('You', message);
-                    chatInput.value = '';
-                })
-                .catch((error) => {
-                    console.error('Failed to send message:', error);
-                    alert('Failed to send message. Please try again.');
-                });
+            sendMessage({ type: 'chat', message: message });
+            addMessageToChat('You', message);
+            chatInput.value = '';
         }
     }
 
@@ -74,13 +68,9 @@ function setupChat() {
 
     if (sendMessageButton && chatInput) {
         console.log('Adding event listeners');
-        sendMessageButton.addEventListener('click', () => {
-            console.log('Send button clicked');
-            sendChatMessage();
-        });
+        sendMessageButton.addEventListener('click', sendChatMessage);
         chatInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
-                console.log('Enter key pressed in chat input');
                 sendChatMessage();
             }
         });
@@ -88,66 +78,19 @@ function setupChat() {
     } else {
         console.error('Chat elements not found');
     }
-
-    // Modify the existing socket.onmessage function
-    let originalOnMessage = socket.onmessage || (() => {});
-    socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
-
-        if (data.type === 'chat') {
-            addMessageToChat('Peer', data.message);
-        } else {
-            // Call the original onmessage handler for other message types
-            originalOnMessage(event);
-        }
-    };
 }
 
-// Call setupChat after the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded');
-    setupChat();
-});
+// Call setupChat when the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', setupChat);
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
-    console.log('Attempting to send message:', message);
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
         console.log('Message sent:', message);
     } else {
-        console.error('WebSocket is not open. Attempting to reconnect...');
-        reconnectWebSocket(() => sendMessage(message));
+        console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
-}
-
-// Add a reconnection function
-function reconnectWebSocket(callback) {
-    console.log('Attempting to reconnect WebSocket...');
-    socket = new WebSocket('wss://blurd.adaptable.app');
-    
-    socket.onopen = () => {
-        console.log('WebSocket reconnected');
-        if (callback) callback();
-    };
-    
-    socket.onerror = (error) => {
-        console.error('WebSocket reconnection error:', error);
-    };
-    
-    // Re-attach the message handler
-    let originalOnMessage = socket.onmessage || (() => {});
-    socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
-
-        if (data.type === 'chat') {
-            addMessageToChat('Peer', data.message);
-        } else {
-            originalOnMessage(event);
-        }
-    };
 }
 
 // Access local media
@@ -422,4 +365,33 @@ window.onload = function() {
     applyBlur(localVideo, true);
     applyBlur(remoteVideo, true);
     console.log('Initial blur applied');
+};
+
+// Remove any references to originalOnMessage
+socket.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
+
+    if (data.type === 'connected') {
+        isOfferer = data.isOfferer;
+        startWebRTC();
+    } else if (data.type === 'offer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+    } else if (data.type === 'answer') {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    } else if (data.type === 'ice-candidate') {
+        if (peerConnection.remoteDescription) {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } else {
+            iceCandidatesQueue.push(data.candidate);
+        }
+    } else if (data.type === 'blur-preference') {
+        remoteWantsBlurOff = data.wantsBlurOff;
+        updateBlurState();
+    } else if (data.type === 'chat') {
+        addMessageToChat('Peer', data.message);
+    }
 };
