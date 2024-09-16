@@ -31,6 +31,9 @@ const configuration = {
 // WebSocket setup
 let socket;
 let socketReady = false;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+const reconnectInterval = 5000; // 5 seconds
 
 function setupWebSocket() {
     console.log('Setting up WebSocket');
@@ -39,13 +42,20 @@ function setupWebSocket() {
     socket.onopen = () => {
         console.log('WebSocket connected');
         socketReady = true;
+        reconnectAttempts = 0;
         startChat();
     };
 
-    socket.onclose = () => {
-        console.log('WebSocket disconnected. Attempting to reconnect...');
+    socket.onclose = (event) => {
+        console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
         socketReady = false;
-        setTimeout(setupWebSocket, 5000);
+        if (reconnectAttempts < maxReconnectAttempts) {
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
+            setTimeout(setupWebSocket, reconnectInterval);
+            reconnectAttempts++;
+        } else {
+            console.error('Max reconnect attempts reached. Please refresh the page.');
+        }
     };
 
     socket.onerror = (error) => {
@@ -165,8 +175,15 @@ function sendMessage(message) {
         socket.send(JSON.stringify(message));
         console.log('Message sent:', message);
     } else {
-        console.error('WebSocket is not ready. Message not sent:', message);
-        setTimeout(() => sendMessage(message), 1000); // Retry after 1 second
+        console.log('WebSocket not ready. Queueing message:', message);
+        messageQueue.push(message);
+    }
+}
+
+function sendQueuedMessages() {
+    while (messageQueue.length > 0 && socketReady) {
+        const message = messageQueue.shift();
+        sendMessage(message);
     }
 }
 
