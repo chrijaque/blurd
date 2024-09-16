@@ -29,12 +29,76 @@ const configuration = {
 };
 
 // WebSocket setup
-const socket = new WebSocket('wss://blurd.adaptable.app');
+let socket;
 
-socket.onopen = () => {
-    console.log('WebSocket connected');
-    startChatButton.disabled = false;  // Enable start button once WebSocket is ready
-};
+function setupWebSocket() {
+    socket = new WebSocket('wss://blurd.adaptable.app');
+
+    socket.onopen = () => {
+        console.log('WebSocket connected');
+        startChat(); // Start the chat process immediately when WebSocket connects
+    };
+
+    socket.onclose = () => {
+        console.log('WebSocket disconnected. Attempting to reconnect...');
+        setTimeout(setupWebSocket, 5000); // Try to reconnect after 5 seconds
+    };
+
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+
+    socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received message:', data);
+
+        // Handle incoming messages (same as before)
+        switch(data.type) {
+            case 'ready':
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
+                peerConnection.createOffer()
+                    .then(offer => peerConnection.setLocalDescription(offer))
+                    .then(() => {
+                        sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                    });
+                break;
+            case 'offer':
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+                break;
+            case 'answer':
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                break;
+            case 'ice-candidate':
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (e) {
+                    console.error('Error adding received ice candidate', e);
+                }
+                break;
+            case 'chat':
+                addMessageToChat('Peer', data.message);
+                break;
+            case 'blur-preference':
+                remoteWantsBlurOff = data.wantsBlurOff;
+                updateBlurState();
+                break;
+        }
+    };
+}
+
+// Call this function when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    setupWebSocket();
+    setupChat(); // Make sure this is called to set up chat functionality
+});
 
 // Add this function to set up chat functionality
 function setupChat() {
@@ -87,17 +151,14 @@ function setupChat() {
     console.log('Chat event listeners set up');
 }
 
-// Call setupChat when the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', setupChat);
-
 // Send signaling messages over WebSocket
 function sendMessage(message) {
     console.log('sendMessage function called with:', message);
-    if (socket.readyState === WebSocket.OPEN) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
         console.log('Message sent via WebSocket:', message);
     } else {
-        console.error('WebSocket is not open. ReadyState:', socket.readyState);
+        console.error('WebSocket is not open. ReadyState:', socket ? socket.readyState : 'socket not initialized');
     }
 }
 
@@ -112,7 +173,6 @@ function startChat() {
             } else {
                 console.error('Local video element not found');
             }
-            updateStatus('Waiting for a peer...');
             createPeerConnection();
             sendMessage({ type: 'ready' });
         })
@@ -145,50 +205,6 @@ function createPeerConnection() {
 
     console.log('Peer connection created');
 }
-
-socket.onmessage = async (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Received message:', data);
-
-    switch(data.type) {
-        case 'ready':
-            if (!peerConnection) {
-                createPeerConnection();
-            }
-            peerConnection.createOffer()
-                .then(offer => peerConnection.setLocalDescription(offer))
-                .then(() => {
-                    sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-                });
-            break;
-        case 'offer':
-            if (!peerConnection) {
-                createPeerConnection();
-            }
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-            break;
-        case 'answer':
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            break;
-        case 'ice-candidate':
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (e) {
-                console.error('Error adding received ice candidate', e);
-            }
-            break;
-        case 'chat':
-            addMessageToChat('Peer', data.message);
-            break;
-        case 'blur-preference':
-            remoteWantsBlurOff = data.wantsBlurOff;
-            updateBlurState();
-            break;
-    }
-};
 
 // Disconnect logic
 disconnectButton.addEventListener('click', () => {
@@ -335,11 +351,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // Make sure this function is defined in the global scope
 function sendMessage(message) {
     console.log('sendMessage function called with:', message);
-    if (socket.readyState === WebSocket.OPEN) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
         console.log('Message sent via WebSocket:', message);
     } else {
-        console.error('WebSocket is not open. ReadyState:', socket.readyState);
+        console.error('WebSocket is not open. ReadyState:', socket ? socket.readyState : 'socket not initialized');
     }
 }
 
