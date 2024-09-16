@@ -9,7 +9,6 @@ let localStream;
 let peerConnection;
 let isOfferer = false;
 let iceCandidatesQueue = [];
-let connectionState = 'new'; // 'new', 'connecting', 'connected', 'disconnected', 'closed'
 
 const configuration = {
     iceServers: [
@@ -197,87 +196,12 @@ function handleIceCandidate(candidate) {
 }
 
 function sendMessage(message) {
-    console.log('sendMessage function called with:', message);
-    if (socketReady) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent:', message);
+        console.log('Sent message:', message);
     } else {
-        console.log('WebSocket not ready. Queueing message:', message);
-        messageQueue.push(message);
+        console.error('WebSocket is not open. Unable to send message.');
     }
-}
-
-function sendQueuedMessages() {
-    while (messageQueue.length > 0 && socketReady) {
-        const message = messageQueue.shift();
-        sendMessage(message);
-    }
-}
-
-function startChat() {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-            localStream = stream;
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = localStream;
-                toggleBlur(localVideo, true);
-            } else {
-                console.error('Local video element not found');
-            }
-            createPeerConnection();
-            sendMessage({ type: 'ready' });
-        })
-        .catch(error => {
-            console.error('Error accessing media devices:', error);
-            updateStatus('Error accessing media devices');
-        });
-}
-
-function createPeerConnection() {
-    if (peerConnection) {
-        peerConnection.close();
-    }
-    peerConnection = new RTCPeerConnection(configuration);
-    updateConnectionState('new');
-
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
-        }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'connected') {
-            updateConnectionState('connected');
-        } else if (peerConnection.iceConnectionState === 'disconnected' || 
-                   peerConnection.iceConnectionState === 'failed') {
-            updateConnectionState('disconnected');
-            handleConnectionLoss();
-        }
-    };
-
-    peerConnection.ontrack = event => {
-        console.log('Received remote track');
-        const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo && event.streams && event.streams[0]) {
-            console.log('Setting remote video stream');
-            remoteVideo.srcObject = event.streams[0];
-            toggleBlur(remoteVideo, true);
-        }
-    };
-
-    // Add local stream
-    if (localStream) {
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-    } else {
-        console.error('Local stream not available');
-    }
-
-    console.log('Peer connection created');
 }
 
 function startConnection(isOfferer) {
