@@ -138,9 +138,7 @@ function handleIncomingMessage(event) {
             break;
         case 'connected':
             console.log('Peer connected, isOfferer:', data.isOfferer);
-            if (data.isOfferer) {
-                startConnection();
-            }
+            startConnection(data.isOfferer);
             break;
         case 'offer':
             handleOffer(data.offer);
@@ -158,6 +156,8 @@ function handleIncomingMessage(event) {
             remoteWantsBlurOff = data.wantsBlurOff;
             updateBlurState();
             break;
+        default:
+            console.log('Unknown message type:', data.type);
     }
 }
 
@@ -263,6 +263,7 @@ function createPeerConnection() {
         console.log('Received remote track');
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
+            console.log('Setting remote video stream');
             remoteVideo.srcObject = event.streams[0];
             toggleBlur(remoteVideo, true);
         }
@@ -280,18 +281,21 @@ function createPeerConnection() {
     console.log('Peer connection created');
 }
 
-function startConnection() {
+function startConnection(isOfferer) {
     createPeerConnection();
     updateConnectionState('connecting');
-    peerConnection.createOffer()
-        .then(offer => peerConnection.setLocalDescription(offer))
-        .then(() => {
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        })
-        .catch(error => {
-            console.error('Error creating offer:', error);
-            updateConnectionState('disconnected');
-        });
+    
+    if (isOfferer) {
+        peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => {
+                console.error('Error creating offer:', error);
+                updateConnectionState('disconnected');
+            });
+    }
 }
 
 function handleConnectionLoss() {
