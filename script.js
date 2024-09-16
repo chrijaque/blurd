@@ -260,6 +260,7 @@ function createPeerConnection() {
     };
 
     peerConnection.ontrack = event => {
+        console.log('Received remote track');
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
@@ -408,8 +409,9 @@ function setupLocalStream() {
             const localVideo = document.getElementById('localVideo');
             if (localVideo) {
                 localVideo.srcObject = stream;
+                localVideo.play().catch(e => console.error('Error playing local video:', e));
             }
-            // If WebSocket is already connected, start the connection
+            // If WebSocket is already connected, send ready message
             if (socketReady) {
                 sendMessage({ type: 'ready' });
             }
