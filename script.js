@@ -85,9 +85,10 @@ document.addEventListener('DOMContentLoaded', setupChat);
 
 // Send signaling messages over WebSocket
 function sendMessage(message) {
+    console.log('sendMessage function called with:', message);
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Message sent:', message);
+        console.log('Message sent via WebSocket:', message);
     } else {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
@@ -99,7 +100,7 @@ startChatButton.addEventListener('click', async () => {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
         toggleBlur(localVideo, true);  // Apply blur to local video
-        statusMessage.textContent = 'Waiting for a peer...';
+        if (statusMessage) statusMessage.textContent = 'Waiting for a peer...';
         sendMessage({ type: 'ready' });
     } catch (error) {
         console.error('Error accessing media devices:', error);
