@@ -89,7 +89,7 @@ function setupChat() {
         console.error('Chat elements not found');
     }
 
-    // Modify the socket.onmessage handler
+    // Modify the existing socket.onmessage function
     let originalOnMessage = socket.onmessage || (() => {});
     socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
