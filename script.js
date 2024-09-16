@@ -30,135 +30,127 @@ const configuration = {
 
 // WebSocket setup
 let socket;
+let socketReady = false;
 
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
 
     socket.onopen = () => {
         console.log('WebSocket connected');
-        startChat(); // Start the chat process immediately when WebSocket connects
+        socketReady = true;
+        startChat();
     };
 
     socket.onclose = () => {
         console.log('WebSocket disconnected. Attempting to reconnect...');
-        setTimeout(setupWebSocket, 5000); // Try to reconnect after 5 seconds
+        socketReady = false;
+        setTimeout(setupWebSocket, 5000);
     };
 
     socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
 
-    socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
-
-        // Handle incoming messages (same as before)
-        switch(data.type) {
-            case 'ready':
-                if (!peerConnection) {
-                    createPeerConnection();
-                }
-                peerConnection.createOffer()
-                    .then(offer => peerConnection.setLocalDescription(offer))
-                    .then(() => {
-                        sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-                    });
-                break;
-            case 'offer':
-                if (!peerConnection) {
-                    createPeerConnection();
-                }
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-                break;
-            case 'answer':
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                break;
-            case 'ice-candidate':
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (e) {
-                    console.error('Error adding received ice candidate', e);
-                }
-                break;
-            case 'chat':
-                addMessageToChat('Peer', data.message);
-                break;
-            case 'blur-preference':
-                remoteWantsBlurOff = data.wantsBlurOff;
-                updateBlurState();
-                break;
-        }
-    };
+    socket.onmessage = handleIncomingMessage;
 }
 
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket();
-    setupChat(); // Make sure this is called to set up chat functionality
+    setupChat();
+    setupUIElements();
 });
 
-// Add this function to set up chat functionality
-function setupChat() {
-    console.log('Setting up chat');
-    const chatBox = document.getElementById('chatBox');
-    if (!chatBox) {
-        console.error('Chat box not found');
-        return;
+function setupUIElements() {
+    const toggleBlurButton = document.getElementById('toggleBlurButton');
+    if (toggleBlurButton) {
+        toggleBlurButton.addEventListener('click', toggleBlur);
+    } else {
+        console.error('Toggle blur button not found');
     }
 
-    const chatInput = chatBox.querySelector('input[type="text"]');
-    const sendMessageButton = chatBox.querySelector('button');
-    const chatMessages = document.getElementById('chatMessages');
-
-    console.log('Chat input found:', !!chatInput);
-    console.log('Send button found:', !!sendMessageButton);
-    console.log('Chat messages container found:', !!chatMessages);
-
-    if (!chatInput || !sendMessageButton) {
-        console.error('Chat elements not found');
-        return;
-    }
-
-    function sendChatMessage() {
-        console.log('sendChatMessage function called');
-        const message = chatInput.value.trim();
-        if (message) {
-            console.log('Attempting to send message:', message);
-            sendMessage({ type: 'chat', message: message });
-            addMessageToChat('You', message);
-            chatInput.value = '';
-        }
-    }
-
-    function addMessageToChat(sender, message) {
-        console.log('Adding message to chat:', sender, message);
-        const messageElement = document.createElement('div');
-        messageElement.textContent = `${sender}: ${message}`;
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    console.log('Adding event listeners');
-    sendMessageButton.addEventListener('click', sendChatMessage);
-    chatInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            sendChatMessage();
-        }
-    });
-    console.log('Chat event listeners set up');
+    // Add other UI element setups here
 }
 
-// Send signaling messages over WebSocket
-function sendMessage(message) {
-    console.log('sendMessage function called with:', message);
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(message));
-        console.log('Message sent via WebSocket:', message);
+function setupChat() {
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = document.getElementById('sendMessageButton');
+    
+    if (chatInput && sendButton) {
+        sendButton.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
     } else {
-        console.error('WebSocket is not open. ReadyState:', socket ? socket.readyState : 'socket not initialized');
+        console.error('Chat elements not found');
+    }
+}
+
+function sendChatMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const message = chatInput.value.trim();
+    if (message) {
+        sendMessage({ type: 'chat', message: message });
+        addMessageToChat('You', message);
+        chatInput.value = '';
+    }
+}
+
+function handleIncomingMessage(event) {
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
+
+    switch(data.type) {
+        case 'ready':
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                });
+            break;
+        case 'offer':
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                .then(() => peerConnection.createAnswer())
+                .then(answer => peerConnection.setLocalDescription(answer))
+                .then(() => {
+                    sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+                });
+            break;
+        case 'answer':
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            break;
+        case 'ice-candidate':
+            try {
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+                console.error('Error adding received ice candidate', e);
+            }
+            break;
+        case 'chat':
+            addMessageToChat('Peer', data.message);
+            break;
+        case 'blur-preference':
+            remoteWantsBlurOff = data.wantsBlurOff;
+            updateBlurState();
+            break;
+    }
+}
+
+function sendMessage(message) {
+    if (socketReady) {
+        socket.send(JSON.stringify(message));
+        console.log('Message sent:', message);
+    } else {
+        console.error('WebSocket is not ready. Message not sent:', message);
+        setTimeout(() => sendMessage(message), 1000); // Retry after 1 second
     }
 }
 
@@ -188,6 +180,14 @@ function createPeerConnection() {
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'disconnected') {
+            console.log('Peer disconnected. Attempting to reconnect...');
+            startChat();
         }
     };
 
