@@ -38,6 +38,7 @@ socket.onopen = () => {
 
 socket.onmessage = async (event) => {
     const data = JSON.parse(event.data);
+    console.log('Received message:', data);
 
     if (data.type === 'connected') {
         isOfferer = data.isOfferer;
@@ -59,6 +60,7 @@ socket.onmessage = async (event) => {
         remoteWantsBlurOff = data.wantsBlurOff;
         updateBlurState();
     } else if (data.type === 'chat') {
+        console.log('Received chat message:', data.message);
         addMessageToChat('Peer', data.message);
     }
 };
@@ -67,6 +69,7 @@ socket.onmessage = async (event) => {
 function sendMessage(message) {
     if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
+        console.log('Message sent via WebSocket:', message);
     } else {
         console.error('WebSocket is not open. ReadyState:', socket.readyState);
     }
@@ -363,11 +366,18 @@ const chatInput = document.getElementById('chatInput');
 const sendMessageButton = document.getElementById('sendMessageButton');
 
 function sendChatMessage() {
+    if (socket.readyState !== WebSocket.OPEN) {
+        console.error('WebSocket is not open. Cannot send message.');
+        return;
+    }
     const message = chatInput.value.trim();
     if (message) {
+        console.log('Attempting to send message:', message);
         sendMessage({ type: 'chat', message: message });
         addMessageToChat('You', message);
         chatInput.value = '';
+    } else {
+        console.log('Message is empty, not sending');
     }
 }
 
@@ -379,9 +389,19 @@ function addMessageToChat(sender, message) {
 }
 
 // Add event listeners for the chat input
-sendMessageButton.addEventListener('click', sendChatMessage);
-chatInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        sendChatMessage();
+document.addEventListener('DOMContentLoaded', () => {
+    const sendMessageButton = document.getElementById('sendMessageButton');
+    const chatInput = document.getElementById('chatInput');
+
+    if (sendMessageButton && chatInput) {
+        sendMessageButton.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+        console.log('Chat event listeners set up');
+    } else {
+        console.error('Chat elements not found');
     }
 });
