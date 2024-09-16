@@ -40,23 +40,11 @@ function setupWebSocket() {
 
     socket.onopen = () => {
         console.log('WebSocket connected');
-        socketReady = true;
-        reconnectAttempts = 0;
-        if (connectionState === 'new' || connectionState === 'disconnected') {
-            startConnection();
-        }
+        setupLocalStream();
     };
 
     socket.onclose = () => {
         console.log('WebSocket disconnected');
-        socketReady = false;
-        updateConnectionState('disconnected');
-        if (reconnectAttempts < maxReconnectAttempts) {
-            setTimeout(setupWebSocket, reconnectInterval);
-            reconnectAttempts++;
-        } else {
-            console.error('Max reconnect attempts reached. Please refresh the page.');
-        }
     };
 
     socket.onerror = (error) => {
@@ -71,7 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket();
     setupChat();
     setupUIElements();
-    setupLocalStream();
 });
 
 function setupUIElements() {
@@ -132,7 +119,6 @@ function handleIncomingMessage(event) {
     switch(data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
-            updateConnectionState('waiting');
             break;
         case 'connected':
             console.log('Peer connected, isOfferer:', data.isOfferer);
@@ -162,7 +148,6 @@ function handleIncomingMessage(event) {
 async function handleOffer(offer) {
     try {
         createPeerConnection();
-        updateConnectionState('connecting');
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
@@ -171,7 +156,6 @@ async function handleOffer(offer) {
         iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling offer:', error);
-        updateConnectionState('disconnected');
     }
 }
 
@@ -182,7 +166,6 @@ async function handleAnswer(answer) {
         iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling answer:', error);
-        updateConnectionState('disconnected');
     }
 }
 
@@ -206,7 +189,6 @@ function sendMessage(message) {
 
 function startConnection(isOfferer) {
     createPeerConnection();
-    updateConnectionState('connecting');
     
     if (isOfferer) {
         peerConnection.createOffer()
@@ -216,21 +198,44 @@ function startConnection(isOfferer) {
             })
             .catch(error => {
                 console.error('Error creating offer:', error);
-                updateConnectionState('disconnected');
             });
     }
 }
 
-function handleConnectionLoss() {
-    console.log('Handling connection loss');
-    if (connectionState !== 'disconnected') {
-        updateConnectionState('disconnected');
-        setTimeout(() => {
-            if (connectionState === 'disconnected') {
-                startConnection();
-            }
-        }, 5000); // Wait 5 seconds before attempting to reconnect
+function createPeerConnection() {
+    if (peerConnection) {
+        peerConnection.close();
     }
+    peerConnection = new RTCPeerConnection(configuration);
+
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+    };
+
+    peerConnection.ontrack = event => {
+        console.log('Received remote track');
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo && event.streams && event.streams[0]) {
+            console.log('Setting remote video stream');
+            remoteVideo.srcObject = event.streams[0];
+        }
+    };
+
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    } else {
+        console.error('Local stream not available');
+    }
+
+    console.log('Peer connection created');
 }
 
 // Disconnect logic
@@ -338,10 +343,7 @@ function setupLocalStream() {
                 localVideo.srcObject = stream;
                 localVideo.play().catch(e => console.error('Error playing local video:', e));
             }
-            // If WebSocket is already connected, send ready message
-            if (socketReady) {
-                sendMessage({ type: 'ready' });
-            }
+            sendMessage({ type: 'ready' });
         })
         .catch(error => {
             console.error('Error accessing media devices:', error);
@@ -353,5 +355,4 @@ document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket();
     setupChat();
     setupUIElements();
-    setupLocalStream();
 });
