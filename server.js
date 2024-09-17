@@ -1,5 +1,5 @@
-const http = require('http');
 const WebSocket = require('ws');
+const http = require('http');
 
 // Create an HTTP server
 const server = http.createServer();
@@ -7,56 +7,81 @@ const server = http.createServer();
 // Use the WebSocket server with the HTTP server
 const wss = new WebSocket.Server({ server });
 
-let waitingClient = null;
+let waitingQueue = [];
+let connectedPairs = new Map();
+
+function pairUsers() {
+    while (waitingQueue.length >= 2) {
+        const user1 = waitingQueue.shift();
+        const user2 = waitingQueue.shift();
+        
+        user1.partner = user2;
+        user2.partner = user1;
+        
+        connectedPairs.set(user1, user2);
+        connectedPairs.set(user2, user1);
+        
+        user1.send(JSON.stringify({ type: 'paired' }));
+        user2.send(JSON.stringify({ type: 'paired' }));
+    }
+}
+
+function handleNext(user) {
+    const partner = connectedPairs.get(user);
+    if (partner) {
+        partner.send(JSON.stringify({ type: 'partnerDisconnected' }));
+        connectedPairs.delete(user);
+        connectedPairs.delete(partner);
+        waitingQueue.push(partner);
+    }
+    waitingQueue.push(user);
+    pairUsers();
+}
 
 wss.on('connection', (ws) => {
-    console.log('A user connected.');
+    console.log('New user connected');
+    
+    waitingQueue.push(ws);
+    pairUsers();
 
-    // Check if there is a waiting client
-    if (waitingClient) {
-        console.log('Pairing with the waiting client.');
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+        
+        switch (data.type) {
+            case 'next':
+                handleNext(ws);
+                break;
+            case 'offer':
+            case 'answer':
+            case 'ice-candidate':
+            case 'blur-preference':
+                if (ws.partner) {
+                    ws.partner.send(message);
+                }
+                break;
+        }
+    });
 
-        const otherClient = waitingClient;
-        waitingClient = null;
-
-        // Notify both clients that they are paired
-        ws.send(JSON.stringify({ type: 'connected', isOfferer: true }));
-        otherClient.send(JSON.stringify({ type: 'connected', isOfferer: false }));
-
-        // Forward messages between the two clients
-        ws.on('message', (message) => {
-            otherClient.send(message);
-        });
-
-        otherClient.on('message', (message) => {
-            ws.send(message);
-        });
-
-        ws.on('close', () => {
-            console.log('A user disconnected.');
-            otherClient.close();
-        });
-
-        otherClient.on('close', () => {
-            console.log('The other user disconnected.');
-            ws.close();
-        });
-
-    } else {
-        console.log('Waiting for another user to connect...');
-        waitingClient = ws;
-
-        ws.send(JSON.stringify({ type: 'waiting' }));
-
-        ws.on('close', () => {
-            console.log('Waiting client disconnected.');
-            waitingClient = null;
-        });
-    }
+    ws.on('close', () => {
+        console.log('User disconnected');
+        const partner = connectedPairs.get(ws);
+        if (partner) {
+            partner.send(JSON.stringify({ type: 'partnerDisconnected' }));
+            connectedPairs.delete(ws);
+            connectedPairs.delete(partner);
+            waitingQueue.push(partner);
+            pairUsers();
+        } else {
+            const index = waitingQueue.indexOf(ws);
+            if (index > -1) {
+                waitingQueue.splice(index, 1);
+            }
+        }
+    });
 });
 
 // Start the server
-const PORT = process.env.PORT || 443;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is listening on port ${PORT}`);
 });

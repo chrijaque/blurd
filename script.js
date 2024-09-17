@@ -359,6 +359,18 @@ function createPeerConnection() {
         console.error('Local stream not available when creating peer connection');
     }
     
+    // Set a timeout for ICE gathering
+    setTimeout(() => {
+        if (peerConnection.iceGatheringState !== 'complete') {
+            console.log('Forcing ICE gathering to complete');
+            peerConnection.getLocalStreams().forEach(stream => {
+                peerConnection.removeStream(stream);
+                peerConnection.addStream(stream);
+            });
+        }
+    }, 5000); // 5 seconds timeout
+
+    console.log('Peer connection setup completed');
 }
 
 // Disconnect logic
