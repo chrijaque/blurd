@@ -314,33 +314,17 @@ async function handleOffer(offer) {
 
 async function handleAnswer(answer) {
     try {
-        if (peerConnection.signalingState !== "have-local-offer") {
-            console.warn('Unexpected signaling state when receiving answer:', peerConnection.signalingState);
-            return;
-        }
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log('Remote description set successfully');
     } catch (error) {
         console.error('Error handling answer:', error);
     }
 }
 
 function handleIceCandidate(candidate) {
-    if (peerConnection && peerConnection.remoteDescription) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .then(() => console.log('ICE candidate added successfully'))
-            .catch(e => console.error('Error adding ICE candidate:', e));
-    } else {
-        iceCandidatesQueue.push(candidate);  // Queue ICE candidates until remote description is set
-    }
-}
-
-function processIceCandidates() {
-    while (iceCandidatesQueue.length) {
-        const candidate = iceCandidatesQueue.shift();
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .then(() => console.log('Queued ICE candidate added successfully'))
-            .catch(e => console.error('Error adding queued ICE candidate:', e));
+    try {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+        console.error('Error adding ICE candidate:', error);
     }
 }
 
@@ -356,12 +340,7 @@ function sendMessage(message) {
 
 function createPeerConnection() {
     console.log('Creating peer connection');
-    if (peerConnection) {
-        console.log('Closing existing peer connection');
-        peerConnection.close();
-    }
     peerConnection = new RTCPeerConnection(configuration);
-    console.log('New peer connection created');
 
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
@@ -370,41 +349,23 @@ function createPeerConnection() {
         }
     };
 
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
-    };
-
     peerConnection.ontrack = event => {
         console.log('Received remote track');
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
             console.log('Setting remote video stream');
             remoteVideo.srcObject = event.streams[0];
-            updateBlurState();
         }
     };
 
+    // Add local stream to peer connection
     if (localStream) {
-        console.log('Adding local stream tracks to peer connection');
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
         });
     } else {
         console.error('Local stream not available when creating peer connection');
     }
-    
-    // Set a timeout for ICE gathering
-    setTimeout(() => {
-        if (peerConnection.iceGatheringState !== 'complete') {
-            console.log('Forcing ICE gathering to complete');
-            peerConnection.getLocalStreams().forEach(stream => {
-                peerConnection.removeStream(stream);
-                peerConnection.addStream(stream);
-            });
-        }
-    }, 5000); // 5 seconds timeout
-
-    console.log('Peer connection setup completed');
 }
 
 function setupLocalStream() {
