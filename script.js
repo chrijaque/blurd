@@ -28,7 +28,7 @@ const configuration = {
         }
     ],
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 0, // Disable pre-gathering
+    iceCandidatePoolSize: 1, // Disable pre-gathering
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
 };
