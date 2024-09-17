@@ -28,7 +28,9 @@ const configuration = {
         }
     ],
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 0, // Disable pre-gathering
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
 };
 
 // WebSocket setup
@@ -124,8 +126,8 @@ function applyInitialBlur() {
 
 function toggleBlur() {
     console.log('Toggle blur called');
-    if (!removeBlurButton) {
-        console.error('Remove blur button not found');
+    if (!removeBlurButton || removeBlurButton.disabled) {
+        console.log('Remove blur button is disabled or not found');
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
@@ -137,13 +139,8 @@ function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     
-    if (!localVideo || !remoteVideo) {
-        console.error('Video elements not found');
-        return;
-    }
-
-    if (!removeBlurButton) {
-        console.error('Remove blur button not found');
+    if (!localVideo || !remoteVideo || !removeBlurButton) {
+        console.error('Video elements or remove blur button not found');
         return;
     }
 
@@ -155,12 +152,14 @@ function updateBlurState() {
         removeBlurButton.textContent = 'DAAAAMN!';
         removeBlurButton.style.backgroundColor = 'blue';
         removeBlurButton.style.color = 'white';
+        removeBlurButton.disabled = true; // Disable the button
     } else {
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
         removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
         removeBlurButton.style.color = '';
+        removeBlurButton.disabled = false; // Enable the button
     }
     console.log('Blur state updated');
 }
@@ -343,6 +342,17 @@ function createPeerConnection() {
     } else {
         console.error('Local stream not available when creating peer connection');
     }
+
+    // Set a timeout for ICE gathering
+    setTimeout(() => {
+        if (peerConnection.iceGatheringState !== 'complete') {
+            console.log('Forcing ICE gathering to complete');
+            peerConnection.getLocalStreams().forEach(stream => {
+                peerConnection.removeStream(stream);
+                peerConnection.addStream(stream);
+            });
+        }
+    }, 5000); // 5 seconds timeout
 
     console.log('Peer connection setup completed');
 }
