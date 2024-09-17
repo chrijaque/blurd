@@ -40,6 +40,8 @@ function setupWebSocket() {
 
     socket.onopen = () => {
         console.log('WebSocket connected');
+        socketReady = true;
+        reconnectAttempts = 0;
         setupLocalStream()
             .then(() => {
                 sendMessage({ type: 'ready' });
@@ -51,6 +53,14 @@ function setupWebSocket() {
 
     socket.onclose = () => {
         console.log('WebSocket disconnected');
+        socketReady = false;
+        if (reconnectAttempts < maxReconnectAttempts) {
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
+            setTimeout(setupWebSocket, reconnectInterval);
+            reconnectAttempts++;
+        } else {
+            console.error('Max reconnect attempts reached. Please refresh the page.');
+        }
     };
 
     socket.onerror = (error) => {
@@ -131,12 +141,15 @@ function handleIncomingMessage(event) {
             startConnection(data.isOfferer);
             break;
         case 'offer':
+            console.log('Received offer');
             handleOffer(data.offer);
             break;
         case 'answer':
+            console.log('Received answer');
             handleAnswer(data.answer);
             break;
         case 'ice-candidate':
+            console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
         case 'chat':
@@ -152,13 +165,16 @@ function handleIncomingMessage(event) {
 }
 
 async function handleOffer(offer) {
+    console.log('Handling offer');
     if (!peerConnection) {
-        await startConnection(false);
+        createPeerConnection();
     }
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log('Remote description set');
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        console.log('Local description set');
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
     } catch (error) {
         console.error('Error handling offer:', error);
@@ -186,40 +202,31 @@ function sendMessage(message) {
         socket.send(JSON.stringify(message));
         console.log('Sent message:', message);
     } else {
-        console.error('WebSocket is not open. Unable to send message.');
+        console.warn('WebSocket is not open. Message not sent:', message);
+        // Optionally, you could queue messages here to send when the connection is ready
     }
 }
 
 function startConnection(isOfferer) {
-    if (!localStream) {
-        console.error('Local stream not available. Setting up local stream first.');
-        return setupLocalStream()
-            .then(() => createPeerConnection())
+    createPeerConnection();
+
+    if (isOfferer) {
+        console.log('Creating offer as offerer');
+        peerConnection.createOffer()
+            .then(offer => {
+                console.log('Setting local description');
+                return peerConnection.setLocalDescription(offer);
+            })
             .then(() => {
-                if (isOfferer) {
-                    return createAndSendOffer();
-                }
+                console.log('Sending offer');
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => {
-                console.error('Error starting connection:', error);
+                console.error('Error creating offer:', error);
             });
     } else {
-        createPeerConnection();
-        if (isOfferer) {
-            return createAndSendOffer();
-        }
+        console.log('Waiting for offer as answerer');
     }
-}
-
-function createAndSendOffer() {
-    return peerConnection.createOffer()
-        .then(offer => peerConnection.setLocalDescription(offer))
-        .then(() => {
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        })
-        .catch(error => {
-            console.error('Error creating offer:', error);
-        });
 }
 
 function createPeerConnection() {
@@ -232,12 +239,13 @@ function createPeerConnection() {
 
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
+            console.log('Sending ICE candidate');
             sendMessage({ type: 'ice-candidate', candidate: event.candidate });
         }
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
     };
 
     peerConnection.ontrack = event => {
