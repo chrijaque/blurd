@@ -9,6 +9,7 @@ let localStream;
 let peerConnection;
 let isOfferer = false;
 let iceCandidatesQueue = [];
+let messageQueue = [];
 
 const configuration = {
     iceServers: [
@@ -42,6 +43,7 @@ function setupWebSocket() {
         console.log('WebSocket connected');
         socketReady = true;
         reconnectAttempts = 0;
+        processMessageQueue(); // Process any queued messages once socket is ready
         setupLocalStream()
             .then(() => {
                 sendMessage({ type: 'ready' });
@@ -70,6 +72,13 @@ function setupWebSocket() {
     socket.onmessage = handleIncomingMessage;
 }
 
+function processMessageQueue() {
+    if (socket.readyState === WebSocket.OPEN) {
+        messageQueue.forEach(message => socket.send(JSON.stringify(message)));
+        messageQueue = [];
+    }
+}
+
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket();
@@ -84,8 +93,6 @@ function setupUIElements() {
     } else {
         console.error('Toggle blur button not found');
     }
-
-    // Add other UI element setups here
 }
 
 function setupChat() {
@@ -94,10 +101,6 @@ function setupChat() {
     const sendButton = document.getElementById('sendMessageButton');
     const chatMessages = document.getElementById('chatMessages');
 
-    console.log('Chat input found:', !!chatInput);
-    console.log('Send button found:', !!sendButton);
-    console.log('Chat messages container found:', !!chatMessages);
-
     if (chatInput && sendButton && chatMessages) {
         sendButton.addEventListener('click', sendChatMessage);
         chatInput.addEventListener('keypress', (event) => {
@@ -105,7 +108,6 @@ function setupChat() {
                 sendChatMessage();
             }
         });
-        console.log('Chat event listeners set up');
     } else {
         console.error('Some chat elements are missing');
     }
@@ -119,7 +121,6 @@ function sendChatMessage() {
     }
     const message = chatInput.value.trim();
     if (message) {
-        console.log('Attempting to send message:', message);
         sendMessage({ type: 'chat', message: message });
         addMessageToChat('You', message);
         chatInput.value = '';
@@ -132,7 +133,7 @@ function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
 
-    switch(data.type) {
+    switch (data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
             break;
@@ -141,15 +142,12 @@ function handleIncomingMessage(event) {
             startConnection(data.isOfferer);
             break;
         case 'offer':
-            console.log('Received offer');
             handleOffer(data.offer);
             break;
         case 'answer':
-            console.log('Received answer');
             handleAnswer(data.answer);
             break;
         case 'ice-candidate':
-            console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
         case 'chat':
@@ -165,16 +163,11 @@ function handleIncomingMessage(event) {
 }
 
 async function handleOffer(offer) {
-    console.log('Handling offer');
-    if (!peerConnection) {
-        createPeerConnection();
-    }
+    if (!peerConnection) createPeerConnection();
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log('Remote description set');
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        console.log('Local description set');
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
     } catch (error) {
         console.error('Error handling offer:', error);
@@ -190,129 +183,103 @@ async function handleAnswer(answer) {
 }
 
 function handleIceCandidate(candidate) {
-    try {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (error) {
-        console.error('Error adding received ice candidate:', error);
+    if (peerConnection && peerConnection.remoteDescription) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(e => console.error('Error adding ICE candidate:', e));
+    } else {
+        iceCandidatesQueue.push(candidate);
     }
 }
 
 function sendMessage(message) {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
-        console.log('Sent message:', message);
     } else {
-        console.warn('WebSocket is not open. Message not sent:', message);
-        // Optionally, you could queue messages here to send when the connection is ready
+        messageQueue.push(message); // Queue message until WebSocket is open
     }
 }
 
 function startConnection(isOfferer) {
-    createPeerConnection();
+    if (!localStream) {
+        setupLocalStream().then(() => {
+            createPeerConnection();
+            proceedWithOfferOrAnswer(isOfferer);
+        });
+    } else {
+        createPeerConnection();
+        proceedWithOfferOrAnswer(isOfferer);
+    }
+}
 
+function proceedWithOfferOrAnswer(isOfferer) {
     if (isOfferer) {
-        console.log('Creating offer as offerer');
         peerConnection.createOffer()
-            .then(offer => {
-                console.log('Setting local description');
-                return peerConnection.setLocalDescription(offer);
-            })
-            .then(() => {
-                console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            })
-            .catch(error => {
-                console.error('Error creating offer:', error);
-            });
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => sendMessage({ type: 'offer', offer: peerConnection.localDescription }));
     } else {
         console.log('Waiting for offer as answerer');
     }
 }
 
 function createPeerConnection() {
-    if (peerConnection) {
-        console.log('Closing existing peer connection');
-        peerConnection.close();
-    }
+    if (peerConnection) peerConnection.close();
     peerConnection = new RTCPeerConnection(configuration);
-    console.log('New peer connection created');
 
     peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            console.log('Sending ICE candidate');
-            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
-        }
+        if (event.candidate) sendMessage({ type: 'ice-candidate', candidate: event.candidate });
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
-    };
-
-    peerConnection.ontrack = event => {
-        console.log('Received remote track');
-        const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo && event.streams && event.streams[0]) {
-            console.log('Setting remote video stream');
-            remoteVideo.srcObject = event.streams[0];
+        if (peerConnection.iceConnectionState === 'connected') {
+            iceCandidatesQueue.forEach(candidate => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
+            iceCandidatesQueue = [];
         }
     };
 
+    peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+        applyInitialBlur();
+    };
+
     if (localStream) {
-        console.log('Adding local stream tracks to peer connection');
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
     } else {
         console.error('Local stream not available when creating peer connection');
     }
-
-    console.log('Peer connection setup completed');
 }
 
 // Disconnect logic
 disconnectButton.addEventListener('click', () => {
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
+    if (peerConnection) peerConnection.close();
     remoteVideo.srcObject = null;
     sendMessage({ type: 'disconnected' });
 });
 
 // Next button to reset the connection
 nextButton.addEventListener('click', () => {
-    disconnectButton.click(); // Trigger disconnect
-    statusMessage.textContent = 'Searching for a new peer...';
-    sendMessage({ type: 'ready' }); // Send ready again for a new connection
+    disconnectButton.click();
+    sendMessage({ type: 'ready' });
 });
 
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
 
+function toggleBlur(video, enabled) {
+    if (video) video.style.filter = enabled ? 'blur(10px)' : 'none';
+}
+
 function applyInitialBlur() {
-    const localVideo = document.getElementById('localVideo');
-    const remoteVideo = document.getElementById('remoteVideo');
     toggleBlur(localVideo, true);
     toggleBlur(remoteVideo, true);
 }
 
-function toggleBlur(video, enabled) {
-    if (video) {
-        video.style.filter = enabled ? 'blur(10px)' : 'none';
-    }
-}
-
 function updateBlurState() {
-    console.log('Updating blur state');
-    console.log('Local wants blur off:', localWantsBlurOff);
-    console.log('Remote wants blur off:', remoteWantsBlurOff);
-    
     const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    const localVideo = document.getElementById('localVideo');
-    const remoteVideo = document.getElementById('remoteVideo');
     toggleBlur(localVideo, !shouldRemoveBlur);
     toggleBlur(remoteVideo, !shouldRemoveBlur);
-    
+
     const removeBlurButton = document.getElementById('removeBlurButton');
     if (removeBlurButton) {
         removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
@@ -320,6 +287,7 @@ function updateBlurState() {
     }
 }
 
+// UI element setup for toggling blur
 function setupUIElements() {
     const removeBlurButton = document.getElementById('removeBlurButton');
     if (removeBlurButton) {
@@ -331,50 +299,12 @@ function setupUIElements() {
     }
 }
 
-// Call this function when the page loads and when the remote stream is added
-applyInitialBlur();
-
-function updateStatus(message) {
-    const statusMessage = document.getElementById('statusMessage');
-    if (statusMessage) {
-        statusMessage.textContent = message;
-    } else {
-        console.error('Status message element not found');
-    }
-}
-
-function addMessageToChat(sender, message) {
-    console.log('Adding message to chat:', sender, message);
-    const chatMessages = document.getElementById('chatMessages');
-    if (chatMessages) {
-        const messageElement = document.createElement('div');
-        messageElement.textContent = `${sender}: ${message}`;
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    } else {
-        console.error('Chat messages container not found');
-    }
-}
-
-window.onbeforeunload = () => {
-    if (peerConnection) {
-        peerConnection.close();
-    }
-    if (socket) {
-        socket.close();
-    }
-};
-
 function setupLocalStream() {
     return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = stream;
-                localVideo.play().catch(e => console.error('Error playing local video:', e));
-            }
-            console.log('Local stream set up successfully');
+            localVideo.srcObject = stream;
+            localVideo.play().catch(e => console.error('Error playing local video:', e));
             return stream;
         })
         .catch(error => {
@@ -383,9 +313,15 @@ function setupLocalStream() {
         });
 }
 
-// Call this function when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    setupWebSocket();
-    setupChat();
-    setupUIElements();
-});
+window.onbeforeunload = () => {
+    if (peerConnection) peerConnection.close();
+    if (socket) socket.close();
+};
+
+function addMessageToChat(sender, message) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageElement = document.createElement('div');
+    messageElement.textContent = `${sender}: ${message}`;
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
