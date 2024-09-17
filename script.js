@@ -94,6 +94,7 @@ function setupBlurEffect() {
     removeBlurButton = document.getElementById('removeBlurButton');
     if (removeBlurButton) {
         removeBlurButton.addEventListener('click', toggleBlur);
+        console.log('Blur effect setup complete');
     } else {
         console.error('Remove blur button not found');
     }
@@ -105,9 +106,14 @@ function applyInitialBlur() {
     const remoteVideo = document.getElementById('remoteVideo');
     if (localVideo) localVideo.style.filter = 'blur(10px)';
     if (remoteVideo) remoteVideo.style.filter = 'blur(10px)';
+    console.log('Initial blur applied');
 }
 
 function toggleBlur() {
+    if (!removeBlurButton) {
+        console.error('Remove blur button not found');
+        return;
+    }
     localWantsBlurOff = !localWantsBlurOff;
     updateBlurState();
     sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
@@ -117,8 +123,13 @@ function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     
-    if (!localVideo || !remoteVideo || !removeBlurButton) {
-        console.error('Video elements or remove blur button not found');
+    if (!localVideo || !remoteVideo) {
+        console.error('Video elements not found');
+        return;
+    }
+
+    if (!removeBlurButton) {
+        console.error('Remove blur button not found');
         return;
     }
 
@@ -135,6 +146,7 @@ function updateBlurState() {
         removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
         removeBlurButton.style.color = '';
     }
+    console.log('Blur state updated');
 }
 
 function setupChat() {
@@ -278,6 +290,7 @@ function startConnection(isOfferer) {
 }
 
 function createPeerConnection() {
+    console.log('Creating peer connection');
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
@@ -302,7 +315,7 @@ function createPeerConnection() {
         if (remoteVideo && event.streams && event.streams[0]) {
             console.log('Setting remote video stream');
             remoteVideo.srcObject = event.streams[0];
-            updateBlurState(); // Apply blur based on current state
+            updateBlurState();
         }
     };
 
