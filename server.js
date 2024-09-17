@@ -35,21 +35,43 @@ function handleNext(user) {
         waitingQueue.push(partner);
     }
     waitingQueue.push(user);
+    user.send(JSON.stringify({ type: 'waiting' }));
     pairUsers();
+}
+
+function handleDisconnect(user) {
+    const partner = connectedPairs.get(user);
+    if (partner) {
+        partner.send(JSON.stringify({ type: 'partnerDisconnected' }));
+        connectedPairs.delete(user);
+        connectedPairs.delete(partner);
+        waitingQueue.push(partner);
+        pairUsers();
+    } else {
+        const index = waitingQueue.indexOf(user);
+        if (index > -1) {
+            waitingQueue.splice(index, 1);
+        }
+    }
 }
 
 wss.on('connection', (ws) => {
     console.log('New user connected');
-    
-    waitingQueue.push(ws);
-    pairUsers();
 
     ws.on('message', (message) => {
         const data = JSON.parse(message);
         
         switch (data.type) {
+            case 'ready':
+                waitingQueue.push(ws);
+                ws.send(JSON.stringify({ type: 'waiting' }));
+                pairUsers();
+                break;
             case 'next':
                 handleNext(ws);
+                break;
+            case 'disconnected':
+                handleDisconnect(ws);
                 break;
             case 'offer':
             case 'answer':
@@ -64,19 +86,7 @@ wss.on('connection', (ws) => {
 
     ws.on('close', () => {
         console.log('User disconnected');
-        const partner = connectedPairs.get(ws);
-        if (partner) {
-            partner.send(JSON.stringify({ type: 'partnerDisconnected' }));
-            connectedPairs.delete(ws);
-            connectedPairs.delete(partner);
-            waitingQueue.push(partner);
-            pairUsers();
-        } else {
-            const index = waitingQueue.indexOf(ws);
-            if (index > -1) {
-                waitingQueue.splice(index, 1);
-            }
-        }
+        handleDisconnect(ws);
     });
 });
 

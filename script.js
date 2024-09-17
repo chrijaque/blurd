@@ -204,6 +204,8 @@ function sendChatMessage() {
     }
 }
 
+let isConnectedToPeer = false;
+
 function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
@@ -211,10 +213,16 @@ function handleIncomingMessage(event) {
     switch(data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
+            isConnectedToPeer = false;
             break;
-        case 'connected':
-            console.log('Peer connected, isOfferer:', data.isOfferer);
-            startConnection(data.isOfferer);
+        case 'paired':
+            console.log('Paired with a new peer');
+            isConnectedToPeer = true;
+            startConnection(true); // Start as offerer
+            break;
+        case 'partnerDisconnected':
+            console.log('Partner disconnected');
+            handlePartnerDisconnect();
             break;
         case 'offer':
             console.log('Received offer');
@@ -228,10 +236,6 @@ function handleIncomingMessage(event) {
             console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
-        case 'ready':
-            console.log('Peer is ready');
-            // You might want to add logic here to start the connection if both peers are ready
-            break;
         case 'blur-preference':
             remoteWantsBlurOff = data.wantsBlurOff;
             updateBlurState();
@@ -243,6 +247,58 @@ function handleIncomingMessage(event) {
             console.log('Unknown message type:', data.type);
     }
 }
+
+function handlePartnerDisconnect() {
+    isConnectedToPeer = false;
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    const remoteVideo = document.getElementById('remoteVideo');
+    if (remoteVideo) {
+        remoteVideo.srcObject = null;
+    }
+    // Reset blur state
+    remoteWantsBlurOff = false;
+    updateBlurState();
+    console.log('Disconnected from peer, waiting for new pairing...');
+}
+
+function startConnection(isOfferer) {
+    createPeerConnection();
+    
+    if (isOfferer) {
+        console.log('Creating offer as offerer');
+        peerConnection.createOffer()
+            .then(offer => {
+                console.log('Setting local description');
+                return peerConnection.setLocalDescription(offer);
+            })
+            .then(() => {
+                console.log('Sending offer');
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => {
+                console.error('Error creating offer:', error);
+            });
+    } else {
+        console.log('Waiting for offer as answerer');
+    }
+}
+
+// Modify your existing nextButton event listener
+nextButton.addEventListener('click', () => {
+    console.log('Next button clicked');
+    sendMessage({ type: 'next' });
+    handlePartnerDisconnect();
+});
+
+// Modify your existing disconnectButton event listener
+disconnectButton.addEventListener('click', () => {
+    console.log('Disconnect button clicked');
+    sendMessage({ type: 'disconnected' });
+    handlePartnerDisconnect();
+});
 
 async function handleOffer(offer) {
     if (!peerConnection) createPeerConnection();
@@ -298,28 +354,6 @@ function sendMessage(message) {
     }
 }
 
-function startConnection(isOfferer) {
-    createPeerConnection();
-    
-    if (isOfferer) {
-        console.log('Creating offer as offerer');
-        peerConnection.createOffer()
-            .then(offer => {
-                console.log('Setting local description');
-                return peerConnection.setLocalDescription(offer);
-            })
-            .then(() => {
-                console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            })
-            .catch(error => {
-                console.error('Error creating offer:', error);
-            });
-    } else {
-        console.log('Waiting for offer as answerer');
-    }
-}
-
 function createPeerConnection() {
     console.log('Creating peer connection');
     if (peerConnection) {
@@ -372,19 +406,6 @@ function createPeerConnection() {
 
     console.log('Peer connection setup completed');
 }
-
-// Disconnect logic
-disconnectButton.addEventListener('click', () => {
-    if (peerConnection) peerConnection.close();
-    remoteVideo.srcObject = null;
-    sendMessage({ type: 'disconnected' });
-});
-
-// Next button to reset the connection
-nextButton.addEventListener('click', () => {
-    disconnectButton.click();
-    sendMessage({ type: 'ready' });
-});
 
 function setupLocalStream() {
     return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
