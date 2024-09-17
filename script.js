@@ -40,7 +40,13 @@ function setupWebSocket() {
 
     socket.onopen = () => {
         console.log('WebSocket connected');
-        setupLocalStream();
+        setupLocalStream()
+            .then(() => {
+                sendMessage({ type: 'ready' });
+            })
+            .catch(error => {
+                console.error('Failed to set up local stream:', error);
+            });
     };
 
     socket.onclose = () => {
@@ -146,14 +152,14 @@ function handleIncomingMessage(event) {
 }
 
 async function handleOffer(offer) {
+    if (!peerConnection) {
+        await startConnection(false);
+    }
     try {
-        createPeerConnection();
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate).catch(e => console.error('Error adding queued candidate:', e)));
-        iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling offer:', error);
     }
@@ -162,19 +168,16 @@ async function handleOffer(offer) {
 async function handleAnswer(answer) {
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        iceCandidatesQueue.forEach(candidate => peerConnection.addIceCandidate(candidate).catch(e => console.error('Error adding queued candidate:', e)));
-        iceCandidatesQueue = [];
     } catch (error) {
         console.error('Error handling answer:', error);
     }
 }
 
 function handleIceCandidate(candidate) {
-    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(error => console.error('Error adding received ice candidate:', error));
-    } else {
-        iceCandidatesQueue.push(candidate);
+    try {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+        console.error('Error adding received ice candidate:', error);
     }
 }
 
@@ -188,25 +191,44 @@ function sendMessage(message) {
 }
 
 function startConnection(isOfferer) {
-    createPeerConnection();
-    
-    if (isOfferer) {
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
+    if (!localStream) {
+        console.error('Local stream not available. Setting up local stream first.');
+        return setupLocalStream()
+            .then(() => createPeerConnection())
             .then(() => {
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                if (isOfferer) {
+                    return createAndSendOffer();
+                }
             })
             .catch(error => {
-                console.error('Error creating offer:', error);
+                console.error('Error starting connection:', error);
             });
+    } else {
+        createPeerConnection();
+        if (isOfferer) {
+            return createAndSendOffer();
+        }
     }
+}
+
+function createAndSendOffer() {
+    return peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        })
+        .catch(error => {
+            console.error('Error creating offer:', error);
+        });
 }
 
 function createPeerConnection() {
     if (peerConnection) {
+        console.log('Closing existing peer connection');
         peerConnection.close();
     }
     peerConnection = new RTCPeerConnection(configuration);
+    console.log('New peer connection created');
 
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
@@ -228,14 +250,15 @@ function createPeerConnection() {
     };
 
     if (localStream) {
+        console.log('Adding local stream tracks to peer connection');
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
         });
     } else {
-        console.error('Local stream not available');
+        console.error('Local stream not available when creating peer connection');
     }
 
-    console.log('Peer connection created');
+    console.log('Peer connection setup completed');
 }
 
 // Disconnect logic
@@ -335,7 +358,7 @@ window.onbeforeunload = () => {
 };
 
 function setupLocalStream() {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;
             const localVideo = document.getElementById('localVideo');
@@ -343,10 +366,12 @@ function setupLocalStream() {
                 localVideo.srcObject = stream;
                 localVideo.play().catch(e => console.error('Error playing local video:', e));
             }
-            sendMessage({ type: 'ready' });
+            console.log('Local stream set up successfully');
+            return stream;
         })
         .catch(error => {
             console.error('Error accessing media devices:', error);
+            throw error;
         });
 }
 
