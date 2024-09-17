@@ -265,25 +265,30 @@ nextButton.addEventListener('click', () => {
 
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
+const removeBlurButton = document.getElementById('removeBlurButton');
 
-function toggleBlur(video, enabled) {
-    if (video) video.style.filter = enabled ? 'blur(10px)' : 'none';
-}
-
-function applyInitialBlur() {
-    toggleBlur(localVideo, true);
-    toggleBlur(remoteVideo, true);
+function toggleBlur() {
+    localWantsBlurOff = !localWantsBlurOff;
+    updateBlurState();
+    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
 }
 
 function updateBlurState() {
-    const shouldRemoveBlur = localWantsBlurOff && remoteWantsBlurOff;
-    toggleBlur(localVideo, !shouldRemoveBlur);
-    toggleBlur(remoteVideo, !shouldRemoveBlur);
-
-    const removeBlurButton = document.getElementById('removeBlurButton');
-    if (removeBlurButton) {
-        removeBlurButton.textContent = localWantsBlurOff ? "Re-enable Blur" : "Remove Blur";
-        removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? "green" : "";
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    
+    if (localWantsBlurOff && remoteWantsBlurOff) {
+        localVideo.style.filter = 'none';
+        remoteVideo.style.filter = 'none';
+        removeBlurButton.textContent = 'DAAAAMN!';
+        removeBlurButton.style.backgroundColor = 'blue';
+        removeBlurButton.style.color = 'white';
+    } else {
+        localVideo.style.filter = 'blur(10px)';
+        remoteVideo.style.filter = 'blur(10px)';
+        removeBlurButton.textContent = 'Remove Blur';
+        removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
+        removeBlurButton.style.color = '';
     }
 }
 
@@ -291,11 +296,7 @@ function updateBlurState() {
 function setupUIElements() {
     const removeBlurButton = document.getElementById('removeBlurButton');
     if (removeBlurButton) {
-        removeBlurButton.addEventListener('click', () => {
-            localWantsBlurOff = !localWantsBlurOff;
-            sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-            updateBlurState();
-        });
+        removeBlurButton.addEventListener('click', toggleBlur);
     }
 }
 
@@ -325,3 +326,11 @@ function addMessageToChat(sender, message) {
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    setupWebSocket();
+    setupChat();
+    setupUIElements();
+    const removeBlurButton = document.getElementById('removeBlurButton');
+    removeBlurButton.addEventListener('click', toggleBlur);
+});
