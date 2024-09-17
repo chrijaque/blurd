@@ -28,7 +28,7 @@ const configuration = {
         }
     ],
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 1, // Disable pre-gathering
+    iceCandidatePoolSize: 0, // Disable pre-gathering
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
 };
@@ -43,19 +43,25 @@ const reconnectInterval = 5000;
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
 
-    socket.onopen = () => {
-        console.log('WebSocket connected');
-        socketReady = true;
-        reconnectAttempts = 0;
-        processMessageQueue(); // Process any queued messages once socket is ready
+    let isReadySent = false;
+
+socket.onopen = () => {
+    console.log('WebSocket connected');
+    socketReady = true;
+    reconnectAttempts = 0;
+
+    // Set up local stream before sending "ready"
+    if (!isReadySent) {
         setupLocalStream()
             .then(() => {
                 sendMessage({ type: 'ready' });
+                isReadySent = true; // Only send this once
             })
             .catch(error => {
                 console.error('Failed to set up local stream:', error);
             });
-    };
+    }
+};
 
     socket.onclose = () => {
         console.log('WebSocket disconnected');
@@ -266,9 +272,19 @@ async function handleAnswer(answer) {
 function handleIceCandidate(candidate) {
     if (peerConnection && peerConnection.remoteDescription) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .then(() => console.log('ICE candidate added successfully'))
             .catch(e => console.error('Error adding ICE candidate:', e));
     } else {
-        iceCandidatesQueue.push(candidate);
+        iceCandidatesQueue.push(candidate);  // Queue ICE candidates until remote description is set
+    }
+}
+
+function processIceCandidates() {
+    while (iceCandidatesQueue.length) {
+        const candidate = iceCandidatesQueue.shift();
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .then(() => console.log('Queued ICE candidate added successfully'))
+            .catch(e => console.error('Error adding queued ICE candidate:', e));
     }
 }
 
@@ -342,19 +358,7 @@ function createPeerConnection() {
     } else {
         console.error('Local stream not available when creating peer connection');
     }
-
-    // Set a timeout for ICE gathering
-    setTimeout(() => {
-        if (peerConnection.iceGatheringState !== 'complete') {
-            console.log('Forcing ICE gathering to complete');
-            peerConnection.getLocalStreams().forEach(stream => {
-                peerConnection.removeStream(stream);
-                peerConnection.addStream(stream);
-            });
-        }
-    }, 5000); // 5 seconds timeout
-
-    console.log('Peer connection setup completed');
+    
 }
 
 // Disconnect logic
