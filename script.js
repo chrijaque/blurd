@@ -26,7 +26,9 @@ const configuration = {
                 "turns:fr-turn1.xirsys.com:5349?transport=tcp"
             ]
         }
-    ]
+    ],
+    iceTransportPolicy: 'all',
+    iceCandidatePoolSize: 10
 };
 
 // WebSocket setup
@@ -81,6 +83,7 @@ function processMessageQueue() {
 
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded');
     setupWebSocket();
     setupChat();
     setupBlurEffect();
@@ -97,6 +100,16 @@ function setupBlurEffect() {
         console.log('Blur effect setup complete');
     } else {
         console.error('Remove blur button not found');
+        // Attempt to find the button by other means
+        const buttons = document.getElementsByTagName('button');
+        for (let button of buttons) {
+            if (button.textContent.toLowerCase().includes('remove blur')) {
+                removeBlurButton = button;
+                removeBlurButton.addEventListener('click', toggleBlur);
+                console.log('Remove blur button found and set up');
+                break;
+            }
+        }
     }
     applyInitialBlur();
 }
@@ -110,6 +123,7 @@ function applyInitialBlur() {
 }
 
 function toggleBlur() {
+    console.log('Toggle blur called');
     if (!removeBlurButton) {
         console.error('Remove blur button not found');
         return;
@@ -132,6 +146,8 @@ function updateBlurState() {
         console.error('Remove blur button not found');
         return;
     }
+
+    console.log('Updating blur state:', { localWantsBlurOff, remoteWantsBlurOff });
 
     if (localWantsBlurOff && remoteWantsBlurOff) {
         localVideo.style.filter = 'none';
