@@ -277,18 +277,22 @@ function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     
-    if (localWantsBlurOff && remoteWantsBlurOff) {
-        localVideo.style.filter = 'none';
-        remoteVideo.style.filter = 'none';
-        removeBlurButton.textContent = 'DAAAAMN!';
-        removeBlurButton.style.backgroundColor = 'blue';
-        removeBlurButton.style.color = 'white';
+    if (localVideo && remoteVideo && removeBlurButton) {
+        if (localWantsBlurOff && remoteWantsBlurOff) {
+            localVideo.style.filter = 'none';
+            remoteVideo.style.filter = 'none';
+            removeBlurButton.textContent = 'DAAAAMN!';
+            removeBlurButton.style.backgroundColor = 'blue';
+            removeBlurButton.style.color = 'white';
+        } else {
+            localVideo.style.filter = 'blur(10px)';
+            remoteVideo.style.filter = 'blur(10px)';
+            removeBlurButton.textContent = 'Remove Blur';
+            removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
+            removeBlurButton.style.color = '';
+        }
     } else {
-        localVideo.style.filter = 'blur(10px)';
-        remoteVideo.style.filter = 'blur(10px)';
-        removeBlurButton.textContent = 'Remove Blur';
-        removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
-        removeBlurButton.style.color = '';
+        console.error('Video elements or remove blur button not found');
     }
 }
 
