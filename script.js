@@ -39,6 +39,7 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 const reconnectInterval = 5000;
 let heartbeatInterval;
+let intentionalDisconnect = false; // Added flag to track intentional disconnects
 
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
@@ -49,6 +50,7 @@ function setupWebSocket() {
         console.log('WebSocket connected');
         socketReady = true;
         reconnectAttempts = 0;
+        intentionalDisconnect = false; // Reset the flag on successful connection
 
         // Set up local stream before sending "ready"
         if (!isReadySent) {
@@ -70,13 +72,14 @@ function setupWebSocket() {
         console.log('WebSocket disconnected');
         socketReady = false;
         if (heartbeatInterval) clearInterval(heartbeatInterval);
-        // Do not attempt to reconnect if the user has intentionally disconnected
-        if (isConnectedToPeer || reconnectAttempts < maxReconnectAttempts) {
+
+        // Attempt to reconnect only if the disconnection was unintentional
+        if (!intentionalDisconnect && reconnectAttempts < maxReconnectAttempts) {
             console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
             setTimeout(setupWebSocket, reconnectInterval);
             reconnectAttempts++;
         } else {
-            console.error('Max reconnect attempts reached or user disconnected intentionally. Please refresh the page.');
+            console.error('Max reconnect attempts reached or intentional disconnect. Please refresh the page.');
         }
     };
 
@@ -93,7 +96,7 @@ function startHeartbeat() {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'ping' }));
         }
-    }, 30000); // Every 30 seconds
+    }, 5000); // Every 5 seconds
 }
 
 function processMessageQueue() {
@@ -339,15 +342,19 @@ function startConnection(isOfferer) {
 // Modify your existing nextButton event listener
 nextButton.addEventListener('click', () => {
     console.log('Next button clicked');
+    intentionalDisconnect = true;
     sendMessage({ type: 'next' });
     handlePartnerDisconnect();
+    if (socket) socket.close();
 });
 
 // Modify your existing disconnectButton event listener
 disconnectButton.addEventListener('click', () => {
     console.log('Disconnect button clicked');
+    intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
+    if (socket) socket.close();
 });
 
 async function handleOffer(offer) {
@@ -434,14 +441,6 @@ function createPeerConnection() {
 }
 
 function setupLocalStream() {
-    const constraints = {
-        video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user' // Optional: 'environment' for rear camera on mobile devices
-        },
-        audio: true
-    };
     return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;

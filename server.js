@@ -171,7 +171,7 @@ const interval = setInterval(() => {
         ws.isAlive = false;
         ws.ping(() => {});
     });
-}, 30000); // Ping every 30 seconds
+}, 5000); // Ping every 5 seconds
 
 wss.on('close', () => {
     clearInterval(interval);
