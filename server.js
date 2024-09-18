@@ -67,9 +67,13 @@ function handleDisconnect(user) {
         sendMessage(partner, { type: 'partnerDisconnected' });
         connectedPairs.delete(user);
         connectedPairs.delete(partner);
-        delete user.partner;
-        delete partner.partner;
-        // Do not re-add the partner to the queue unless they explicitly request it
+        // Give the disconnected user some time to potentially reconnect
+        setTimeout(() => {
+            if (partner.readyState === WebSocket.OPEN && !connectedPairs.has(partner)) {
+                waitingQueue.push(partner);
+                pairUsers();
+            }
+        }, 10000); // Wait 10 seconds before re-queuing the partner
     } else {
         const index = waitingQueue.indexOf(user);
         if (index > -1) {

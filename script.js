@@ -12,24 +12,15 @@ let messageQueue = [];
 
 const configuration = {
     iceServers: [
-        { urls: 'stun:fr-turn1.xirsys.com' },
-        {
-            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
-            credential: "d11f86be-714e-11ef-8726-0242ac120004",
-            urls: [
-                "turn:fr-turn1.xirsys.com:80?transport=udp",
-                "turn:fr-turn1.xirsys.com:3478?transport=udp",
-                "turn:fr-turn1.xirsys.com:80?transport=tcp",
-                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
-                "turns:fr-turn1.xirsys.com:443?transport=tcp",
-                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
-            ]
-        }
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // Add your TURN server here if you have one
     ],
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 0, // Disable pre-gathering
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require'
+    iceCandidatePoolSize: 10
 };
 
 // WebSocket setup
@@ -255,7 +246,7 @@ function handleIncomingMessage(event) {
             } else {
                 console.error('statusMessage element not found');
             }
-            startConnection(data.isOfferer); // Start as offerer or answerer
+            startConnection(true); // Start as offerer
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -407,7 +398,6 @@ function createPeerConnection() {
         }
     };
 
-
     peerConnection.ontrack = event => {
         console.log('Received remote track');
         const remoteVideo = document.getElementById('remoteVideo');
@@ -416,17 +406,20 @@ function createPeerConnection() {
             remoteVideo.srcObject = event.streams[0];
         }
     };
+
     // Add these event listeners
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE Connection State Change:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'disconnected' || 
+            peerConnection.iceConnectionState === 'failed') {
+            handleConnectionFailure();
+        }
     };
 
     peerConnection.onconnectionstatechange = () => {
         console.log('Peer Connection State Change:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-            console.log('Peer connection failed or disconnected');
-            handlePartnerDisconnect();
-            sendMessage({ type: 'partnerDisconnected' });
+        if (peerConnection.connectionState === 'failed') {
+            handleConnectionFailure();
         }
     };
 
@@ -437,6 +430,14 @@ function createPeerConnection() {
         });
     } else {
         console.error('Local stream not available when creating peer connection');
+    }
+}
+
+function handleConnectionFailure() {
+    console.log('Connection failed, attempting to reconnect...');
+    if (isConnectedToPeer) {
+        handlePartnerDisconnect();
+        sendMessage({ type: 'ready' }); // Re-enter the queue
     }
 }
 
