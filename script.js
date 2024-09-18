@@ -88,6 +88,20 @@ function processMessageQueue() {
         messageQueue = [];
     }
 }
+setInterval(() => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }));
+    }
+}, 30000); // Every 30 seconds
+
+socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'pong') {
+        // Connection is alive
+        return;
+    }
+    // Handle other messages
+};
 
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {

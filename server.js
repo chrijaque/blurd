@@ -91,7 +91,10 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
             console.log('Received message:', data);
-
+            if (data.type === 'ping') {
+                sendMessage(ws, { type: 'pong' });
+                return; // Skip further processing
+            }
             switch (data.type) {
                 case 'ready':
                     waitingQueue.push(ws);
@@ -121,11 +124,16 @@ wss.on('connection', (ws) => {
         } catch (error) {
             console.error('Error processing message:', error);
         }
+    
     });
 
-    ws.on('close', () => {
-        console.log('User disconnected');
+    ws.on('close', (code, reason) => {
+        console.log(`User disconnected. Code: ${code}, Reason: ${reason}`);
         handleDisconnect(ws);
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
     });
 });
 
@@ -142,3 +150,30 @@ setInterval(() => {
     console.log('  Waiting queue length:', waitingQueue.length);
     console.log('  Connected pairs:', connectedPairs.size / 2);
 }, 5000);
+
+function heartbeat() {
+    this.isAlive = true;
+}
+
+wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', heartbeat);
+
+    // Existing code...
+});
+
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.log('Terminating dead connection');
+            return ws.terminate();
+        }
+
+        ws.isAlive = false;
+        ws.ping(() => {});
+    });
+}, 30000); // Ping every 30 seconds
+
+wss.on('close', () => {
+    clearInterval(interval);
+});
