@@ -357,9 +357,15 @@ disconnectButton.addEventListener('click', () => {
     if (socket) socket.close();
 });
 
+let makingOffer = false;
+let ignoreOffer = false;
+
 async function handleOffer(offer) {
-    if (!peerConnection) createPeerConnection();
     try {
+        if (peerConnection.signalingState != "stable") {
+            console.log("Ignoring offer in non-stable state");
+            return;
+        }
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
@@ -371,7 +377,8 @@ async function handleOffer(offer) {
 
 async function handleAnswer(answer) {
     try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        const remoteDesc = new RTCSessionDescription(answer);
+        await peerConnection.setRemoteDescription(remoteDesc);
     } catch (error) {
         console.error('Error handling answer:', error);
     }
@@ -440,6 +447,18 @@ function createPeerConnection() {
     } else {
         console.error('Local stream not available when creating peer connection');
     }
+
+    peerConnection.onnegotiationneeded = async () => {
+        try {
+            makingOffer = true;
+            await peerConnection.setLocalDescription();
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            makingOffer = false;
+        }
+    };
 }
 
 function handleConnectionFailure() {
