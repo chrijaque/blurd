@@ -15,16 +15,19 @@ function pairUsers() {
     while (waitingQueue.length >= 2) {
         const user1 = waitingQueue.shift();
         const user2 = waitingQueue.shift();
-        
+
         if (user1.readyState === WebSocket.OPEN && user2.readyState === WebSocket.OPEN) {
             user1.partner = user2;
             user2.partner = user1;
-            
+
             connectedPairs.set(user1, user2);
             connectedPairs.set(user2, user1);
-            
-            sendMessage(user1, { type: 'paired' });
-            sendMessage(user2, { type: 'paired' });
+
+            // Randomly decide who is the offerer
+            const isUser1Offerer = Math.random() < 0.5;
+
+            sendMessage(user1, { type: 'paired', isOfferer: isUser1Offerer });
+            sendMessage(user2, { type: 'paired', isOfferer: !isUser1Offerer });
             console.log('Paired two users');
         } else {
             console.log('One of the users disconnected before pairing');
@@ -42,8 +45,12 @@ function handleNext(user) {
         sendMessage(partner, { type: 'partnerDisconnected' });
         connectedPairs.delete(user);
         connectedPairs.delete(partner);
+        delete user.partner;
+        delete partner.partner;
+
         if (partner.readyState === WebSocket.OPEN) {
             waitingQueue.push(partner);
+            sendMessage(partner, { type: 'waiting' });
         }
     }
     if (user.readyState === WebSocket.OPEN) {
@@ -60,8 +67,12 @@ function handleDisconnect(user) {
         sendMessage(partner, { type: 'partnerDisconnected' });
         connectedPairs.delete(user);
         connectedPairs.delete(partner);
+        delete user.partner;
+        delete partner.partner;
+
         if (partner.readyState === WebSocket.OPEN) {
             waitingQueue.push(partner);
+            sendMessage(partner, { type: 'waiting' });
             pairUsers();
         }
     } else {
@@ -85,7 +96,7 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
             console.log('Received message:', data);
-            
+
             switch (data.type) {
                 case 'ready':
                     waitingQueue.push(ws);
@@ -102,6 +113,7 @@ wss.on('connection', (ws) => {
                 case 'answer':
                 case 'ice-candidate':
                 case 'blur-preference':
+                case 'chat':
                     if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
                         sendMessage(ws.partner, data);
                     }
@@ -131,5 +143,5 @@ setInterval(() => {
     console.log('Server state:');
     console.log('  Connected clients:', wss.clients.size);
     console.log('  Waiting queue length:', waitingQueue.length);
-    console.log('  Connected pairs:', connectedPairs.size);
+    console.log('  Connected pairs:', connectedPairs.size / 2);
 }, 5000);

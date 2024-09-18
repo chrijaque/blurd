@@ -45,23 +45,23 @@ function setupWebSocket() {
 
     let isReadySent = false;
 
-socket.onopen = () => {
-    console.log('WebSocket connected');
-    socketReady = true;
-    reconnectAttempts = 0;
+    socket.onopen = () => {
+        console.log('WebSocket connected');
+        socketReady = true;
+        reconnectAttempts = 0;
 
-    // Set up local stream before sending "ready"
-    if (!isReadySent) {
-        setupLocalStream()
-            .then(() => {
-                sendMessage({ type: 'ready' });
-                isReadySent = true; // Only send this once
-            })
-            .catch(error => {
-                console.error('Failed to set up local stream:', error);
-            });
-    }
-};
+        // Set up local stream before sending "ready"
+        if (!isReadySent) {
+            setupLocalStream()
+                .then(() => {
+                    sendMessage({ type: 'ready' });
+                    isReadySent = true; // Only send this once
+                })
+                .catch(error => {
+                    console.error('Failed to set up local stream:', error);
+                });
+        }
+    };
 
     socket.onclose = () => {
         console.log('WebSocket disconnected');
@@ -144,7 +144,7 @@ function toggleBlur() {
 function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
-    
+
     if (!localVideo || !remoteVideo || !removeBlurButton) {
         console.error('Video elements or remove blur button not found');
         return;
@@ -214,14 +214,17 @@ function handleIncomingMessage(event) {
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
+            statusMessage.textContent = 'Waiting for a peer...';
             break;
         case 'paired':
             console.log('Paired with a new peer');
             isConnectedToPeer = true;
-            startConnection(true); // Start as offerer
+            statusMessage.textContent = 'Connected to a peer';
+            startConnection(data.isOfferer); // Start as offerer or answerer
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
+            statusMessage.textContent = 'Partner disconnected';
             handlePartnerDisconnect();
             break;
         case 'offer':
@@ -266,7 +269,7 @@ function handlePartnerDisconnect() {
 
 function startConnection(isOfferer) {
     createPeerConnection();
-    
+
     if (isOfferer) {
         console.log('Creating offer as offerer');
         peerConnection.createOffer()
