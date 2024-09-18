@@ -12,15 +12,24 @@ let messageQueue = [];
 
 const configuration = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        // Add your TURN server here if you have one
+        { urls: 'stun:fr-turn1.xirsys.com' },
+        {
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004",
+            urls: [
+                "turn:fr-turn1.xirsys.com:80?transport=udp",
+                "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+                "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+            ]
+        }
     ],
     iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 0, // Disable pre-gathering
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
 };
 
 // WebSocket setup
