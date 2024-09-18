@@ -69,12 +69,7 @@ function handleDisconnect(user) {
         connectedPairs.delete(partner);
         delete user.partner;
         delete partner.partner;
-
-        if (partner.readyState === WebSocket.OPEN) {
-            waitingQueue.push(partner);
-            sendMessage(partner, { type: 'waiting' });
-            pairUsers();
-        }
+        // Do not re-add the partner to the queue unless they explicitly request it
     } else {
         const index = waitingQueue.indexOf(user);
         if (index > -1) {
@@ -116,6 +111,8 @@ wss.on('connection', (ws) => {
                 case 'chat':
                     if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
                         sendMessage(ws.partner, data);
+                    } else {
+                        console.log('No partner to send message to');
                     }
                     break;
                 default:

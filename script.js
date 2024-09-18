@@ -65,12 +65,13 @@ function setupWebSocket() {
     socket.onclose = () => {
         console.log('WebSocket disconnected');
         socketReady = false;
-        if (reconnectAttempts < maxReconnectAttempts) {
+        // Do not attempt to reconnect if the user has intentionally disconnected
+        if (isConnectedToPeer || reconnectAttempts < maxReconnectAttempts) {
             console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
             setTimeout(setupWebSocket, reconnectInterval);
             reconnectAttempts++;
         } else {
-            console.error('Max reconnect attempts reached. Please refresh the page.');
+            console.error('Max reconnect attempts reached or user disconnected intentionally. Please refresh the page.');
         }
     };
 
@@ -255,7 +256,10 @@ function handleIncomingMessage(event) {
 }
 
 function handlePartnerDisconnect() {
+    if (!isConnectedToPeer) return;
     isConnectedToPeer = false;
+    console.log('Handling partner disconnect');
+
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
@@ -267,7 +271,15 @@ function handlePartnerDisconnect() {
     // Reset blur state
     remoteWantsBlurOff = false;
     updateBlurState();
-    console.log('Disconnected from peer, waiting for new pairing...');
+    console.log('Disconnected from peer');
+
+    // Prompt user to decide next action
+    if (confirm('Your partner has disconnected. Would you like to find a new partner?')) {
+        sendMessage({ type: 'ready' });
+    } else {
+        // User chooses not to find a new partner
+        sendMessage({ type: 'disconnected' });
+    }
 }
 
 function startConnection(isOfferer) {
@@ -348,6 +360,7 @@ function createPeerConnection() {
     console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
 
+    // Existing event handlers...
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             console.log('Sending ICE candidate');
@@ -355,12 +368,26 @@ function createPeerConnection() {
         }
     };
 
+
     peerConnection.ontrack = event => {
         console.log('Received remote track');
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
             console.log('Setting remote video stream');
             remoteVideo.srcObject = event.streams[0];
+        }
+    };
+    // Add these event listeners
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE Connection State Change:', peerConnection.iceConnectionState);
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Peer Connection State Change:', peerConnection.connectionState);
+        if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
+            console.log('Peer connection failed or disconnected');
+            handlePartnerDisconnect();
+            sendMessage({ type: 'partnerDisconnected' });
         }
     };
 
