@@ -434,6 +434,14 @@ function createPeerConnection() {
 }
 
 function setupLocalStream() {
+    const constraints = {
+        video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user' // Optional: 'environment' for rear camera on mobile devices
+        },
+        audio: true
+    };
     return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;
