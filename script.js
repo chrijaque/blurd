@@ -11,19 +11,19 @@ let iceCandidatesQueue = [];
 let messageQueue = [];
 
 const configuration = {
-    iceServers: [
-        { urls: 'stun:fr-turn1.xirsys.com' },
-        {
-            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
-            credential: "d11f86be-714e-11ef-8726-0242ac120004",
-            urls: [
-                "turn:fr-turn1.xirsys.com:80?transport=udp",
-                "turn:fr-turn1.xirsys.com:3478?transport=udp",
-                "turn:fr-turn1.xirsys.com:80?transport=tcp",
-                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
-                "turns:fr-turn1.xirsys.com:443?transport=tcp",
-                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
-            ]
+    iceServers: [{
+        urls: [ "stun:fr-turn1.xirsys.com" ]
+     }, {
+        username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+        credential: "d11f86be-714e-11ef-8726-0242ac120004",
+        urls: [
+            "turn:fr-turn1.xirsys.com:80?transport=udp",
+            "turn:fr-turn1.xirsys.com:3478?transport=udp",
+            "turn:fr-turn1.xirsys.com:80?transport=tcp",
+            "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+            "turns:fr-turn1.xirsys.com:443?transport=tcp",
+            "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+        ]
         }
     ],
     iceTransportPolicy: 'all',
@@ -376,11 +376,18 @@ async function handleOffer(offer) {
 }
 
 async function handleAnswer(answer) {
+    console.log('Handling answer. Current signaling state:', peerConnection.signalingState);
+    if (peerConnection.signalingState === "stable") {
+        console.warn("Received answer while in stable state. Ignoring.");
+        return;
+    }
     try {
-        const remoteDesc = new RTCSessionDescription(answer);
-        await peerConnection.setRemoteDescription(remoteDesc);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        console.log('Remote description set successfully');
     } catch (error) {
         console.error('Error handling answer:', error);
+        console.log('PeerConnection state:', peerConnection.connectionState);
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
     }
 }
 
@@ -469,18 +476,17 @@ function handleConnectionFailure() {
     }
 }
 
-function setupLocalStream() {
-    return navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-            localStream = stream;
-            localVideo.srcObject = stream;
-            localVideo.play().catch(e => console.error('Error playing local video:', e));
-            return stream;
-        })
-        .catch(error => {
-            console.error('Error accessing media devices:', error);
-            throw error;
-        });
+async function setupLocalStream() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const localVideo = document.getElementById('localVideo');
+        if (localVideo) {
+            localVideo.srcObject = localStream;
+        }
+        console.log('Local stream set up successfully');
+    } catch (error) {
+        console.error('Error setting up local stream:', error);
+    }
 }
 
 window.onbeforeunload = () => {
