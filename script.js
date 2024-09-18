@@ -1,6 +1,5 @@
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
-const startChatButton = document.getElementById('startChatButton');
 const nextButton = document.getElementById('nextButton');
 const disconnectButton = document.getElementById('disconnectButton');
 const statusMessage = document.getElementById('statusMessage');
@@ -214,7 +213,11 @@ function handleIncomingMessage(event) {
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
-            statusMessage.textContent = 'Waiting for a peer...';
+            if (statusMessage) {
+                statusMessage.textContent = 'Waiting for a peer...';
+            } else {
+                console.error('statusMessage element not found');
+            }
             break;
         case 'paired':
             console.log('Paired with a new peer');
