@@ -38,6 +38,7 @@ let socketReady = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 const reconnectInterval = 5000;
+let heartbeatInterval;
 
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
@@ -60,11 +61,15 @@ function setupWebSocket() {
                     console.error('Failed to set up local stream:', error);
                 });
         }
+
+        // Start the heartbeat interval after the socket is open
+        startHeartbeat();
     };
 
     socket.onclose = () => {
         console.log('WebSocket disconnected');
         socketReady = false;
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
         // Do not attempt to reconnect if the user has intentionally disconnected
         if (isConnectedToPeer || reconnectAttempts < maxReconnectAttempts) {
             console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
@@ -82,6 +87,15 @@ function setupWebSocket() {
     socket.onmessage = handleIncomingMessage;
 }
 
+function startHeartbeat() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
+        }
+    }, 30000); // Every 30 seconds
+}
+
 function processMessageQueue() {
     if (socket.readyState === WebSocket.OPEN) {
         messageQueue.forEach(message => socket.send(JSON.stringify(message)));
@@ -93,15 +107,6 @@ setInterval(() => {
         socket.send(JSON.stringify({ type: 'ping' }));
     }
 }, 30000); // Every 30 seconds
-
-socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'pong') {
-        // Connection is alive
-        return;
-    }
-    // Handle other messages
-};
 
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -224,6 +229,11 @@ function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
 
+    if (data.type === 'pong') {
+        // Connection is alive
+        return;
+    }
+
     switch(data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
@@ -237,12 +247,20 @@ function handleIncomingMessage(event) {
         case 'paired':
             console.log('Paired with a new peer');
             isConnectedToPeer = true;
-            statusMessage.textContent = 'Connected to a peer';
+            if (statusMessage) {
+                statusMessage.textContent = 'Connected to a peer';
+            } else {
+                console.error('statusMessage element not found');
+            }
             startConnection(data.isOfferer); // Start as offerer or answerer
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
-            statusMessage.textContent = 'Partner disconnected';
+            if (statusMessage) {
+                statusMessage.textContent = 'Partner disconnected';
+            } else {
+                console.error('statusMessage element not found');
+            }
             handlePartnerDisconnect();
             break;
         case 'offer':

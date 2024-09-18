@@ -90,7 +90,7 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            console.log('Received message:', data);
+
             if (data.type === 'ping') {
                 sendMessage(ws, { type: 'pong' });
                 return; // Skip further processing
@@ -124,7 +124,6 @@ wss.on('connection', (ws) => {
         } catch (error) {
             console.error('Error processing message:', error);
         }
-    
     });
 
     ws.on('close', (code, reason) => {
