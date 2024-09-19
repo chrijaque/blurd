@@ -8,7 +8,6 @@ let localStream;
 let peerConnection;
 let isOfferer = false;
 let iceCandidatesQueue = [];
-let messageQueue = [];
 
 const configuration = {
     iceServers: [{
@@ -41,31 +40,19 @@ const reconnectInterval = 5000;
 let heartbeatInterval;
 let intentionalDisconnect = false; // Added flag to track intentional disconnects
 
-function setupWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.app');
-
-    let isReadySent = false;
-
-    socket.onopen = () => {
-        console.log('WebSocket connected');
-        socketReady = true;
-        reconnectAttempts = 0;
-        intentionalDisconnect = false; // Reset the flag on successful connection
-
-        // Set up local stream before sending "ready"
-        if (!isReadySent) {
-            setupLocalStream()
-                .then(() => {
-                    sendMessage({ type: 'ready' });
-                    isReadySent = true; // Only send this once
-                })
-                .catch(error => {
-                    console.error('Failed to set up local stream:', error);
-                });
-        }
-
-        // Start the heartbeat interval after the socket is open
-        startHeartbeat();
+ function setupWebSocket() {
+        socket = new WebSocket('wss://blurd.adaptable.app');
+    
+        socket.onopen = () => {
+            console.log('WebSocket connected');
+            socketReady = true;
+            reconnectAttempts = 0;
+            intentionalDisconnect = false; // Reset the flag on successful connection
+    
+            sendMessage({ type: 'ready' });
+            // Start the heartbeat interval after the socket is open
+            startHeartbeat();
+        };
     };
 
     socket.onclose = () => {
@@ -86,9 +73,7 @@ function setupWebSocket() {
     socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
-
     socket.onmessage = handleIncomingMessage;
-}
 
 function startHeartbeat() {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -99,22 +84,10 @@ function startHeartbeat() {
     }, 5000); // Every 5 seconds
 }
 
-function processMessageQueue() {
-    if (socket.readyState === WebSocket.OPEN) {
-        messageQueue.forEach(message => socket.send(JSON.stringify(message)));
-        messageQueue = [];
-    }
-}
-setInterval(() => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'ping' }));
-    }
-}, 30000); // Every 30 seconds
-
 // Call this function when the page loads
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM fully loaded');
-    initializeConnection();
+    await initializeConnection();
     setupWebSocket();
     setupChat();
     setupBlurEffect();
@@ -146,8 +119,6 @@ function setupBlurEffect() {
 }
 
 function applyInitialBlur() {
-    const localVideo = document.getElementById('localVideo');
-    const remoteVideo = document.getElementById('remoteVideo');
     if (localVideo) localVideo.style.filter = 'blur(10px)';
     if (remoteVideo) remoteVideo.style.filter = 'blur(10px)';
     console.log('Initial blur applied');
@@ -249,14 +220,14 @@ function handleIncomingMessage(event) {
             }
             break;
         case 'paired':
-            console.log('Paired with a new peer');
-            isConnectedToPeer = true;
+                console.log('Paired with a new peer');
+                isConnectedToPeer = true;
             if (statusMessage) {
-                statusMessage.textContent = 'Connected to a peer';
+                    statusMessage.textContent = 'Connected to a peer';
             } else {
-                console.error('statusMessage element not found');
-            }
-            startConnection(true); // Start as offerer
+                    console.error('statusMessage element not found');
+                }
+                startConnection(data.isOfferer); // Use the isOfferer flag from the server
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -300,7 +271,6 @@ function handlePartnerDisconnect() {
         peerConnection.close();
         peerConnection = null;
     }
-    const remoteVideo = document.getElementById('remoteVideo');
     if (remoteVideo) {
         remoteVideo.srcObject = null;
     }
@@ -311,17 +281,22 @@ function handlePartnerDisconnect() {
 
     // Prompt user to decide next action
     if (confirm('Your partner has disconnected. Would you like to find a new partner?')) {
+        intentionalDisconnect = false; // Reset the flag
         sendMessage({ type: 'ready' });
     } else {
         // User chooses not to find a new partner
+        intentionalDisconnect = true;
         sendMessage({ type: 'disconnected' });
+        if (socket) socket.close(); // Close the WebSocket connection
     }
 }
 
 function startConnection(isOfferer) {
-    if (!peerConnection) {
-        createPeerConnection();
+    if (peerConnection) {
+        console.log('Closing existing peer connection');
+        peerConnection.close();
     }
+    createPeerConnection();
     
     if (isOfferer) {
         peerConnection.createOffer()
@@ -336,19 +311,17 @@ function startConnection(isOfferer) {
 // Modify your existing nextButton event listener
 nextButton.addEventListener('click', () => {
     console.log('Next button clicked');
-    intentionalDisconnect = true;
     sendMessage({ type: 'next' });
     handlePartnerDisconnect();
-    if (socket) socket.close();
+    // Do not close the WebSocket
 });
 
-// Modify your existing disconnectButton event listener
 disconnectButton.addEventListener('click', () => {
     console.log('Disconnect button clicked');
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
-    if (socket) socket.close();
+    if (socket) socket.close(); // Close the WebSocket only on full disconnect
 });
 
 let makingOffer = false;
@@ -381,6 +354,7 @@ async function handleAnswer(answer) {
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         console.log('Remote description set successfully');
+        await flushIceCandidatesQueue(); // Flush queued ICE candidates
     } catch (error) {
         console.error('Error handling answer:', error);
         console.log('PeerConnection state:', peerConnection.connectionState);
@@ -424,9 +398,9 @@ function sendMessage(message) {
 }
 
 function createPeerConnection() {
-    if (peerConnection) {
-        console.log('Closing existing peer connection');
-        peerConnection.close();
+    console.log('Creating new peer connection');
+    peerConnection = new RTCPeerConnection(configuration);
+
     }
     console.log('Creating new peer connection');
     peerConnection = new RTCPeerConnection(configuration);
@@ -467,7 +441,6 @@ function createPeerConnection() {
 
     console.log('Peer connection created');
     return peerConnection;
-}
 
 function handleConnectionFailure() {
     console.log('Connection failed, attempting to reconnect...');
