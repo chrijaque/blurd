@@ -120,9 +120,10 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-
+    
             if (data.type === 'ping') {
                 sendMessage(ws, { type: 'pong' });
+                ws.isAlive = true; // Update the connection's liveness
                 return; // Skip further processing
             }
 
@@ -165,7 +166,7 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Heartbeat mechanism to keep connections alive
+// Heartbeat mechanism to check client connections
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
@@ -174,9 +175,10 @@ const interval = setInterval(() => {
         }
 
         ws.isAlive = false;
-        ws.ping(() => {});
+        // We rely on the client to send 'ping' messages
+        // If the client doesn't send a 'ping', 'isAlive' will remain false
     });
-}, 5000); // Ping every 5 seconds
+}, 30000); // Check every 30 seconds
 
 wss.on('close', () => {
     clearInterval(interval);

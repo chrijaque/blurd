@@ -63,12 +63,12 @@ function setupWebSocket() {
         console.log('WebSocket disconnected');
         socketReady = false;
         if (heartbeatInterval) clearInterval(heartbeatInterval);
-
+    
         // Attempt to reconnect only if the disconnection was unintentional
         if (!intentionalDisconnect && reconnectAttempts < maxReconnectAttempts) {
             console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
-            setTimeout(setupWebSocket, reconnectInterval);
             reconnectAttempts++;
+            setTimeout(setupWebSocket, reconnectInterval);
         } else {
             console.error('Max reconnect attempts reached or intentional disconnect. Please refresh the page.');
         }
@@ -84,10 +84,10 @@ function setupWebSocket() {
 function startHeartbeat() {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(() => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
+        if (document.visibilityState === 'visible' && socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'ping' }));
         }
-    }, 5000); // Every 5 seconds
+    }, 15000); // Every 15 seconds
 }
 
 // Call this function when the page loads
@@ -273,27 +273,29 @@ function handlePartnerDisconnect() {
     console.log('Handling partner disconnect');
 
     if (peerConnection) {
+        peerConnection.ontrack = null;
+        peerConnection.onicecandidate = null;
+        peerConnection.oniceconnectionstatechange = null;
+        peerConnection.onsignalingstatechange = null;
+        peerConnection.onnegotiationneeded = null;
+
         peerConnection.close();
         peerConnection = null;
     }
     if (remoteVideo) {
-        remoteVideo.srcObject = null;
+        if (remoteVideo.srcObject) {
+            remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            remoteVideo.srcObject = null;
+        }
     }
     // Reset blur state
     remoteWantsBlurOff = false;
     updateBlurState();
     console.log('Disconnected from peer');
 
-    // Prompt user to decide next action
-    if (confirm('Your partner has disconnected. Would you like to find a new partner?')) {
-        intentionalDisconnect = false; // Reset the flag
-        sendMessage({ type: 'ready' });
-    } else {
-        // User chooses not to find a new partner
-        intentionalDisconnect = true;
-        sendMessage({ type: 'disconnected' });
-        if (socket) socket.close(); // Close the WebSocket connection
-    }
+    // Automatically attempt to find a new partner
+    intentionalDisconnect = false; // Ensure the flag is false
+    sendMessage({ type: 'ready' });
 }
 
 function startConnection(isOfferer) {
