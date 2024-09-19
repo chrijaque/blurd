@@ -114,6 +114,7 @@ setInterval(() => {
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded');
+    initializeConnection();
     setupWebSocket();
     setupChat();
     setupBlurEffect();
@@ -318,24 +319,17 @@ function handlePartnerDisconnect() {
 }
 
 function startConnection(isOfferer) {
-    createPeerConnection();
-
+    if (!peerConnection) {
+        createPeerConnection();
+    }
+    
     if (isOfferer) {
-        console.log('Creating offer');
         peerConnection.createOffer()
-            .then(offer => {
-                console.log('Setting local description');
-                return peerConnection.setLocalDescription(offer);
-            })
+            .then(offer => peerConnection.setLocalDescription(offer))
             .then(() => {
-                console.log('Sending offer');
                 sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
-            .catch(error => {
-                console.error('Error creating offer:', error);
-            });
-    } else {
-        console.log('Waiting for offer as answerer');
+            .catch(error => console.error('Error creating offer:', error));
     }
 }
 
@@ -496,9 +490,15 @@ async function setupLocalStream() {
     }
 }
 
-// Make sure to call this before starting the connection
-await setupLocalStream();
-createPeerConnection();
+// Wrap the initialization in an async function
+async function initializeConnection() {
+    try {
+        await setupLocalStream();
+        createPeerConnection();
+    } catch (error) {
+        console.error('Error during initialization:', error);
+    }
+}
 
 function updateConnectionStatus() {
     const statusMessage = document.getElementById('statusMessage');
