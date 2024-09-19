@@ -15,6 +15,19 @@ function pairUsers() {
         const user1 = waitingQueue.shift();
         const user2 = waitingQueue.shift();
 
+        // Check if both users are still connected
+        if (user1.readyState !== WebSocket.OPEN) {
+            console.log('User1 disconnected before pairing');
+            if (user2.readyState === WebSocket.OPEN) waitingQueue.unshift(user2);
+            continue;
+        }
+
+        if (user2.readyState !== WebSocket.OPEN) {
+            console.log('User2 disconnected before pairing');
+            if (user1.readyState === WebSocket.OPEN) waitingQueue.unshift(user1);
+            continue;
+        }
+
         // Randomly decide who is the offerer
         const isUser1Offerer = Math.random() < 0.5;
 
@@ -29,18 +42,73 @@ function pairUsers() {
         user2.partner = user1;
 
         console.log('Paired two users');
-
-        if (user1.readyState !== WebSocket.OPEN || user2.readyState !== WebSocket.OPEN) {
-            console.log('One of the users disconnected before pairing');
-            if (user1.readyState === WebSocket.OPEN) waitingQueue.unshift(user1);
-            if (user2.readyState === WebSocket.OPEN) waitingQueue.unshift(user2);
-        }
     }
     console.log('Pairing complete. Remaining in queue:', waitingQueue.length);
 }
 
 function heartbeat() {
     this.isAlive = true;
+}
+
+function sendMessage(user, message) {
+    if (user.readyState === WebSocket.OPEN) {
+        user.send(JSON.stringify(message));
+    }
+}
+
+function handleReady(ws) {
+    if (!waitingQueue.includes(ws)) {
+        waitingQueue.push(ws);
+        sendMessage(ws, { type: 'waiting' });
+        pairUsers();
+    } else {
+        console.log('Client is already in the waiting queue');
+    }
+}
+
+function handleNext(ws) {
+    console.log('Handling next for a user');
+    const partner = connectedPairs.get(ws);
+    if (partner) {
+        sendMessage(partner, { type: 'partnerDisconnected' });
+        connectedPairs.delete(ws);
+        connectedPairs.delete(partner);
+        delete ws.partner;
+        delete partner.partner;
+
+        if (partner.readyState === WebSocket.OPEN) {
+            waitingQueue.push(partner);
+            sendMessage(partner, { type: 'waiting' });
+        }
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+        waitingQueue.push(ws);
+        sendMessage(ws, { type: 'waiting' });
+    }
+    pairUsers();
+}
+
+function handleDisconnect(ws) {
+    console.log('Handling disconnect for a user');
+    const partner = connectedPairs.get(ws);
+    if (partner) {
+        sendMessage(partner, { type: 'partnerDisconnected' });
+        connectedPairs.delete(ws);
+        connectedPairs.delete(partner);
+        delete ws.partner;
+        delete partner.partner;
+
+        if (partner.readyState === WebSocket.OPEN) {
+            waitingQueue.push(partner);
+            sendMessage(partner, { type: 'waiting' });
+            pairUsers();
+        }
+    } else {
+        const index = waitingQueue.indexOf(ws);
+        if (index > -1) {
+            waitingQueue.splice(index, 1);
+        }
+    }
 }
 
 wss.on('connection', (ws) => {
@@ -50,7 +118,41 @@ wss.on('connection', (ws) => {
     ws.on('pong', heartbeat);
 
     ws.on('message', (message) => {
-        // ... existing message handling code ...
+        try {
+            const data = JSON.parse(message);
+
+            if (data.type === 'ping') {
+                sendMessage(ws, { type: 'pong' });
+                return; // Skip further processing
+            }
+
+            switch (data.type) {
+                case 'ready':
+                    handleReady(ws);
+                    break;
+                case 'next':
+                    handleNext(ws);
+                    break;
+                case 'disconnected':
+                    handleDisconnect(ws);
+                    break;
+                case 'offer':
+                case 'answer':
+                case 'ice-candidate':
+                case 'blur-preference':
+                case 'chat':
+                    if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
+                        sendMessage(ws.partner, data);
+                    } else {
+                        console.log('No partner to send message to');
+                    }
+                    break;
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        } catch (error) {
+            console.error('Error processing message:', error);
+        }
     });
 
     ws.on('close', (code, reason) => {
@@ -78,4 +180,10 @@ const interval = setInterval(() => {
 
 wss.on('close', () => {
     clearInterval(interval);
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
 });

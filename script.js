@@ -216,7 +216,7 @@ function handleIncomingMessage(event) {
         return;
     }
 
-    switch(data.type) {
+    switch (data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
@@ -231,8 +231,6 @@ function handleIncomingMessage(event) {
                 isConnectedToPeer = true;
                 if (statusMessage) {
                     statusMessage.textContent = 'Connected to a peer';
-                } else {
-                    console.error('statusMessage element not found');
                 }
                 startConnection(data.isOfferer); // Use the isOfferer flag from the server
                 break;
@@ -299,12 +297,16 @@ function handlePartnerDisconnect() {
 }
 
 function startConnection(isOfferer) {
-    polite = !isOfferer;
+    polite = !isOfferer; // If you're the offerer, you're impolite
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
     }
     createPeerConnection();
+
+    console.log(isOfferer ? 'Starting as offerer' : 'Starting as answerer; waiting for offer');
+    // Do not create an offer here; it will be handled by onnegotiationneeded
+}
 
     if (isOfferer) {
         console.log('Starting as offerer');
@@ -318,7 +320,6 @@ function startConnection(isOfferer) {
         console.log('Starting as answerer; waiting for offer');
     }
 
-}
 
 // Modify your existing nextButton event listener
 nextButton.addEventListener('click', () => {
@@ -359,6 +360,8 @@ async function handleOffer(offer) {
 async function handleAnswer(answer) {
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        // Flush any queued ICE candidates
+        await flushIceCandidatesQueue();
     } catch (error) {
         console.error('Error handling answer:', error);
     }
@@ -414,8 +417,8 @@ function createPeerConnection() {
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        } catch (err) {
-            console.error('Error during negotiationneeded event:', err);
+        } catch (error) {
+            console.error('Error during negotiationneeded event:', error);
         } finally {
             makingOffer = false;
         }
