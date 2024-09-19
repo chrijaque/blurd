@@ -219,16 +219,16 @@ function handleIncomingMessage(event) {
                 console.error('statusMessage element not found');
             }
             break;
-        case 'paired':
+            case 'paired':
                 console.log('Paired with a new peer');
                 isConnectedToPeer = true;
-            if (statusMessage) {
+                if (statusMessage) {
                     statusMessage.textContent = 'Connected to a peer';
-            } else {
+                } else {
                     console.error('statusMessage element not found');
                 }
                 startConnection(data.isOfferer); // Use the isOfferer flag from the server
-            break;
+                break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
             if (statusMessage) {
@@ -292,20 +292,25 @@ function handlePartnerDisconnect() {
 }
 
 function startConnection(isOfferer) {
+    polite = !isOfferer;
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
     }
     createPeerConnection();
-    
+
     if (isOfferer) {
+        console.log('Starting as offerer');
         peerConnection.createOffer()
             .then(offer => peerConnection.setLocalDescription(offer))
             .then(() => {
                 sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
+    } else {
+        console.log('Starting as answerer; waiting for offer');
     }
+
 }
 
 // Modify your existing nextButton event listener
@@ -326,23 +331,22 @@ disconnectButton.addEventListener('click', () => {
 
 let makingOffer = false;
 let ignoreOffer = false;
+let polite = false; // Set this based on your role
 
 async function handleOffer(offer) {
-    console.log('Handling offer. Current state:', peerConnection.signalingState);
     try {
-        if (peerConnection.signalingState != "stable") {
-            console.log("Signaling state is not stable, rolling back");
-            await Promise.all([
-                peerConnection.setLocalDescription({type: "rollback"}),
-                peerConnection.setRemoteDescription(offer)
-            ]);
-        } else {
-            await peerConnection.setRemoteDescription(offer);
+        const offerCollision = makingOffer || peerConnection.signalingState != "stable";
+
+        ignoreOffer = !polite && offerCollision;
+        if (ignoreOffer) {
+            console.log('Ignoring offer due to collision');
+            return;
         }
-        console.log('Remote description set successfully');
+
+        console.log('Handling offer');
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        console.log('Sending answer');
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
     } catch (error) {
         console.error('Error handling offer:', error);
@@ -350,15 +354,10 @@ async function handleOffer(offer) {
 }
 
 async function handleAnswer(answer) {
-    console.log('Handling answer. Current signaling state:', peerConnection.signalingState);
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log('Remote description set successfully');
-        await flushIceCandidatesQueue(); // Flush queued ICE candidates
     } catch (error) {
         console.error('Error handling answer:', error);
-        console.log('PeerConnection state:', peerConnection.connectionState);
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
     }
 }
 
@@ -398,13 +397,28 @@ function sendMessage(message) {
 }
 
 function createPeerConnection() {
-    console.log('Creating new peer connection');
-    peerConnection = new RTCPeerConnection(configuration);
-
+    if (peerConnection) {
+        console.log('Closing existing peer connection');
+        peerConnection.close();
     }
     console.log('Creating new peer connection');
     peerConnection = new RTCPeerConnection(configuration);
 
+    // Add the onnegotiationneeded event handler here
+    peerConnection.onnegotiationneeded = async () => {
+        try {
+            makingOffer = true;
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        } catch (err) {
+            console.error('Error during negotiationneeded event:', err);
+        } finally {
+            makingOffer = false;
+        }
+    };
+
+    // Existing event handlers
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             console.log('Sending ICE candidate');
@@ -414,7 +428,6 @@ function createPeerConnection() {
 
     peerConnection.ontrack = event => {
         console.log('Received remote track', event);
-        const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
             console.log('Setting remote video stream');
             remoteVideo.srcObject = event.streams[0];
@@ -441,13 +454,6 @@ function createPeerConnection() {
 
     console.log('Peer connection created');
     return peerConnection;
-
-function handleConnectionFailure() {
-    console.log('Connection failed, attempting to reconnect...');
-    if (isConnectedToPeer) {
-        handlePartnerDisconnect();
-        sendMessage({ type: 'ready' }); // Re-enter the queue
-    }
 }
 
 async function setupLocalStream() {

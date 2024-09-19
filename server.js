@@ -11,17 +11,19 @@ let waitingQueue = [];
 let connectedPairs = new Map();
 
 function pairUsers() {
-    console.log('Attempting to pair users. Queue length:', waitingQueue.length);
     while (waitingQueue.length >= 2) {
         const user1 = waitingQueue.shift();
         const user2 = waitingQueue.shift();
 
-        if (user1.readyState === WebSocket.OPEN && user2.readyState === WebSocket.OPEN) {
-            user1.partner = user2;
-            user2.partner = user1;
+        // Assign roles
+        sendMessage(user1, { type: 'paired', isOfferer: true });
+        sendMessage(user2, { type: 'paired', isOfferer: false });
 
-            connectedPairs.set(user1, user2);
-            connectedPairs.set(user2, user1);
+        connectedPairs.set(user1, user2);
+        connectedPairs.set(user2, user1);
+
+        user1.partner = user2;
+        user2.partner = user1;
 
             // Randomly decide who is the offerer
             const isUser1Offerer = Math.random() < 0.5;
@@ -29,7 +31,7 @@ function pairUsers() {
             sendMessage(user1, { type: 'paired', isOfferer: isUser1Offerer });
             sendMessage(user2, { type: 'paired', isOfferer: !isUser1Offerer });
             console.log('Paired two users');
-        } else {
+        if (user1.readyState !== WebSocket.OPEN || user2.readyState !== WebSocket.OPEN) {
             console.log('One of the users disconnected before pairing');
             if (user1.readyState === WebSocket.OPEN) waitingQueue.unshift(user1);
             if (user2.readyState === WebSocket.OPEN) waitingQueue.unshift(user2);
