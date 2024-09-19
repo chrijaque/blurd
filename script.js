@@ -8,21 +8,26 @@ let localStream;
 let peerConnection;
 let isOfferer = false;
 let iceCandidatesQueue = [];
+let makingOffer = false;
+let ignoreOffer = false;
+let polite = false; // Will be set based on your role
 
 const configuration = {
-    iceServers: [{
-        urls: [ "stun:fr-turn1.xirsys.com" ]
-     }, {
-        username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
-        credential: "d11f86be-714e-11ef-8726-0242ac120004",
-        urls: [
-            "turn:fr-turn1.xirsys.com:80?transport=udp",
-            "turn:fr-turn1.xirsys.com:3478?transport=udp",
-            "turn:fr-turn1.xirsys.com:80?transport=tcp",
-            "turn:fr-turn1.xirsys.com:3478?transport=tcp",
-            "turns:fr-turn1.xirsys.com:443?transport=tcp",
-            "turns:fr-turn1.xirsys.com:5349?transport=tcp"
-        ]
+    iceServers: [
+        {
+            urls: ["stun:fr-turn1.xirsys.com"]
+        },
+        {
+            username: "your_xirsys_username",
+            credential: "your_xirsys_credential",
+            urls: [
+                "turn:fr-turn1.xirsys.com:80?transport=udp",
+                "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+                "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+            ]
         }
     ],
     iceTransportPolicy: 'all',
@@ -40,19 +45,18 @@ const reconnectInterval = 5000;
 let heartbeatInterval;
 let intentionalDisconnect = false; // Added flag to track intentional disconnects
 
- function setupWebSocket() {
-        socket = new WebSocket('wss://blurd.adaptable.app');
-    
-        socket.onopen = () => {
-            console.log('WebSocket connected');
-            socketReady = true;
-            reconnectAttempts = 0;
-            intentionalDisconnect = false; // Reset the flag on successful connection
-    
-            sendMessage({ type: 'ready' });
-            // Start the heartbeat interval after the socket is open
-            startHeartbeat();
-        };
+function setupWebSocket() {
+    socket = new WebSocket('wss://blurd.adaptable.app');
+
+    socket.onopen = () => {
+        console.log('WebSocket connected');
+        socketReady = true;
+        reconnectAttempts = 0;
+        intentionalDisconnect = false; // Reset the flag on successful connection
+
+        sendMessage({ type: 'ready' });
+        // Start the heartbeat interval after the socket is open
+        startHeartbeat();
     };
 
     socket.onclose = () => {
@@ -73,7 +77,9 @@ let intentionalDisconnect = false; // Added flag to track intentional disconnect
     socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
+
     socket.onmessage = handleIncomingMessage;
+}
 
 function startHeartbeat() {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -92,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupChat();
     setupBlurEffect();
 });
+
 
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
@@ -329,10 +336,6 @@ disconnectButton.addEventListener('click', () => {
     if (socket) socket.close(); // Close the WebSocket only on full disconnect
 });
 
-let makingOffer = false;
-let ignoreOffer = false;
-let polite = false; // Set this based on your role
-
 async function handleOffer(offer) {
     try {
         const offerCollision = makingOffer || peerConnection.signalingState != "stable";
@@ -473,7 +476,7 @@ async function setupLocalStream() {
 async function initializeConnection() {
     try {
         await setupLocalStream();
-        createPeerConnection();
+        // Do not create peerConnection here; it will be created when a peer is found
     } catch (error) {
         console.error('Error during initialization:', error);
     }
