@@ -321,7 +321,7 @@ function startConnection(isOfferer) {
     createPeerConnection();
 
     if (isOfferer) {
-        console.log('Creating offer as offerer');
+        console.log('Creating offer');
         peerConnection.createOffer()
             .then(offer => {
                 console.log('Setting local description');
@@ -361,14 +361,21 @@ let makingOffer = false;
 let ignoreOffer = false;
 
 async function handleOffer(offer) {
+    console.log('Handling offer. Current state:', peerConnection.signalingState);
     try {
         if (peerConnection.signalingState != "stable") {
-            console.log("Ignoring offer in non-stable state");
-            return;
+            console.log("Signaling state is not stable, rolling back");
+            await Promise.all([
+                peerConnection.setLocalDescription({type: "rollback"}),
+                peerConnection.setRemoteDescription(offer)
+            ]);
+        } else {
+            await peerConnection.setRemoteDescription(offer);
         }
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log('Remote description set successfully');
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        console.log('Sending answer');
         sendMessage({ type: 'answer', answer: peerConnection.localDescription });
     } catch (error) {
         console.error('Error handling offer:', error);
@@ -377,10 +384,6 @@ async function handleOffer(offer) {
 
 async function handleAnswer(answer) {
     console.log('Handling answer. Current signaling state:', peerConnection.signalingState);
-    if (peerConnection.signalingState === "stable") {
-        console.warn("Received answer while in stable state. Ignoring.");
-        return;
-    }
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         console.log('Remote description set successfully');
@@ -392,10 +395,27 @@ async function handleAnswer(answer) {
 }
 
 function handleIceCandidate(candidate) {
+    if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+        addIceCandidate(candidate);
+    } else {
+        iceCandidatesQueue.push(candidate);
+    }
+}
+
+async function addIceCandidate(candidate) {
     try {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (error) {
-        console.error('Error adding ICE candidate:', error);
+        await peerConnection.addIceCandidate(candidate);
+        console.log('ICE candidate added successfully');
+    } catch (e) {
+        console.error('Error adding received ice candidate', e);
+    }
+}
+
+async function flushIceCandidatesQueue() {
+    console.log('Flushing ICE candidates queue');
+    while (iceCandidatesQueue.length) {
+        const candidate = iceCandidatesQueue.shift();
+        await addIceCandidate(candidate);
     }
 }
 
@@ -410,10 +430,13 @@ function sendMessage(message) {
 }
 
 function createPeerConnection() {
-    console.log('Creating peer connection');
+    if (peerConnection) {
+        console.log('Closing existing peer connection');
+        peerConnection.close();
+    }
+    console.log('Creating new peer connection');
     peerConnection = new RTCPeerConnection(configuration);
 
-    // Existing event handlers...
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
             console.log('Sending ICE candidate');
@@ -422,7 +445,7 @@ function createPeerConnection() {
     };
 
     peerConnection.ontrack = event => {
-        console.log('Received remote track');
+        console.log('Received remote track', event);
         const remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo && event.streams && event.streams[0]) {
             console.log('Setting remote video stream');
@@ -430,20 +453,13 @@ function createPeerConnection() {
         }
     };
 
-    // Add these event listeners
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE Connection State Change:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'disconnected' || 
-            peerConnection.iceConnectionState === 'failed') {
-            handleConnectionFailure();
-        }
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        updateConnectionStatus();
     };
 
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Peer Connection State Change:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'failed') {
-            handleConnectionFailure();
-        }
+    peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state:', peerConnection.signalingState);
     };
 
     // Add local stream to peer connection
@@ -455,17 +471,8 @@ function createPeerConnection() {
         console.error('Local stream not available when creating peer connection');
     }
 
-    peerConnection.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            await peerConnection.setLocalDescription();
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        } catch (err) {
-            console.error(err);
-        } finally {
-            makingOffer = false;
-        }
-    };
+    console.log('Peer connection created');
+    return peerConnection;
 }
 
 function handleConnectionFailure() {
@@ -486,6 +493,19 @@ async function setupLocalStream() {
         console.log('Local stream set up successfully');
     } catch (error) {
         console.error('Error setting up local stream:', error);
+    }
+}
+
+// Make sure to call this before starting the connection
+await setupLocalStream();
+createPeerConnection();
+
+function updateConnectionStatus() {
+    const statusMessage = document.getElementById('statusMessage');
+    if (peerConnection && peerConnection.iceConnectionState === 'connected') {
+        statusMessage.textContent = 'Connected to a peer';
+    } else {
+        statusMessage.textContent = 'Waiting for peer...';
     }
 }
 
