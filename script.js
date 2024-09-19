@@ -140,6 +140,11 @@ function toggleBlur() {
     localWantsBlurOff = !localWantsBlurOff;
     updateBlurState();
     sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
+    
+    if (localWantsBlurOff) {
+        removeBlurButton.textContent = 'Waiting for partner accept';
+        removeBlurButton.disabled = true;
+    }
 }
 
 function updateBlurState() {
@@ -159,15 +164,28 @@ function updateBlurState() {
         removeBlurButton.textContent = 'DAAAAMN!';
         removeBlurButton.style.backgroundColor = 'blue';
         removeBlurButton.style.color = 'white';
-        removeBlurButton.disabled = true; // Disable the button
+        removeBlurButton.disabled = true;
+    } else if (localWantsBlurOff && !remoteWantsBlurOff) {
+        localVideo.style.filter = 'blur(10px)';
+        remoteVideo.style.filter = 'blur(10px)';
+        removeBlurButton.textContent = 'Waiting for partner accept';
+        removeBlurButton.style.backgroundColor = '';
+        removeBlurButton.style.color = '';
+        removeBlurButton.disabled = true;
     } else {
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
         removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
         removeBlurButton.style.color = '';
-        removeBlurButton.disabled = false; // Enable the button
+        removeBlurButton.disabled = false;
+
+        // Add chat notification if remote peer wants to remove blur
+        if (remoteWantsBlurOff && !localWantsBlurOff) {
+            addMessageToChat('System', "Your partner wants to remove blur. Click 'Remove Blur' to accept.");
+        }
     }
+
     console.log('Blur state updated');
 }
 
@@ -481,7 +499,7 @@ async function setupLocalStream() {
 async function initializeConnection() {
     try {
         await setupLocalStream();
-        // Do not create peerConnection here; it will be created when a peer is found
+        createPeerConnection();
     } catch (error) {
         console.error('Error during initialization:', error);
     }
@@ -504,7 +522,13 @@ window.onbeforeunload = () => {
 function addMessageToChat(sender, message) {
     const chatMessages = document.getElementById('chatMessages');
     const messageElement = document.createElement('div');
-    messageElement.textContent = `${sender}: ${message}`;
+    
+    if (sender === 'System') {
+        messageElement.style.fontStyle = 'italic';
+        messageElement.style.color = '#888';
+    }
+    
+    messageElement.textContent = `${sender === 'System' ? '' : sender + ': '}${message}`;
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
