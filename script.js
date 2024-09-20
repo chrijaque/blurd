@@ -133,21 +133,24 @@ function applyInitialBlur() {
 
 function toggleBlur() {
     console.log('Toggle blur called');
-    if (!removeBlurButton || removeBlurButton.disabled) {
-        console.log('Remove blur button is disabled or not found');
+    if (!removeBlurButton || removeBlurButton.disabled || !isConnectedToPeer) {
+        console.log('Remove blur button is disabled, not found, or not connected to a peer');
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
     console.log('Local wants blur off:', localWantsBlurOff);
     updateBlurState();
-    sendBlurState();
 }
 
 function sendBlurState() {
-    sendMessage({ 
-        type: 'blur-state', 
-        wantsBlurOff: localWantsBlurOff
-    });
+    if (isConnectedToPeer) {
+        sendMessage({ 
+            type: 'blur-state', 
+            wantsBlurOff: localWantsBlurOff
+        });
+    } else {
+        console.log('Not connected to a peer. Blur state not sent.');
+    }
 }
 
 function updateBlurState() {
@@ -192,8 +195,10 @@ function updateBlurState() {
         removeBlurButton.disabled = false;
     }
 
-    // Send updated state to ensure both peers are in sync
-    sendBlurState();
+    // Only send updated state if connected to a peer
+    if (isConnectedToPeer) {
+        sendBlurState();
+    }
 
     console.log('Blur state updated');
 }
@@ -260,8 +265,8 @@ function handleIncomingMessage(event) {
                     statusMessage.textContent = 'Connected to a peer';
                 }
                 clearChat();
-                resetBlurState(); // Add this line
-                startConnection(data.isOfferer); // Use the isOfferer flag from the server
+                resetBlurState();
+                startConnection(data.isOfferer);
                 break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -360,7 +365,7 @@ function startConnection(isOfferer) {
 nextButton.addEventListener('click', () => {
     console.log('Next button clicked');
     clearChat();
-    resetBlurState(); // Add this line
+    resetBlurState();
     sendMessage({ type: 'next' });
     handlePartnerDisconnect();
     // Do not close the WebSocket
