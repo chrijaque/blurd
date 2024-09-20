@@ -140,17 +140,14 @@ function toggleBlur() {
     localWantsBlurOff = !localWantsBlurOff;
     console.log('Local wants blur off:', localWantsBlurOff);
     updateBlurState();
+    sendBlurState();
 }
 
 function sendBlurState() {
-    if (isConnectedToPeer) {
-        sendMessage({ 
-            type: 'blur-state', 
-            wantsBlurOff: localWantsBlurOff
-        });
-    } else {
-        console.log('Not connected to a peer. Blur state not sent.');
-    }
+    sendMessage({ 
+        type: 'blur-state', 
+        wantsBlurOff: localWantsBlurOff
+    });
 }
 
 function updateBlurState() {
