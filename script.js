@@ -138,6 +138,7 @@ function toggleBlur() {
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
+    console.log('Local wants blur off:', localWantsBlurOff);
     updateBlurState();
     sendBlurState();
 }
@@ -258,9 +259,9 @@ function handleIncomingMessage(event) {
                 if (statusMessage) {
                     statusMessage.textContent = 'Connected to a peer';
                 }
-                clearChat(); // Add this line to clear the chat
+                clearChat();
+                resetBlurState(); // Add this line
                 startConnection(data.isOfferer); // Use the isOfferer flag from the server
-                updateBlurState(); // Add this line
                 break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -284,6 +285,7 @@ function handleIncomingMessage(event) {
             handleIceCandidate(data.candidate);
             break;
         case 'blur-state':
+            console.log('Received blur state:', data.wantsBlurOff);
             remoteWantsBlurOff = data.wantsBlurOff;
             updateBlurState();
             break;
@@ -357,7 +359,8 @@ function startConnection(isOfferer) {
 // Modify your existing nextButton event listener
 nextButton.addEventListener('click', () => {
     console.log('Next button clicked');
-    clearChat(); // Add this line to clear the chat
+    clearChat();
+    resetBlurState(); // Add this line
     sendMessage({ type: 'next' });
     handlePartnerDisconnect();
     // Do not close the WebSocket
@@ -365,7 +368,7 @@ nextButton.addEventListener('click', () => {
 
 disconnectButton.addEventListener('click', () => {
     console.log('Disconnect button clicked');
-    clearChat(); // Add this line to clear the chat
+    clearChat();
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
@@ -587,4 +590,10 @@ function clearChat() {
     } else {
         console.error('Chat messages element not found');
     }
+}
+
+function resetBlurState() {
+    localWantsBlurOff = false;
+    remoteWantsBlurOff = false;
+    updateBlurState();
 }
