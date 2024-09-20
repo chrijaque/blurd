@@ -258,6 +258,7 @@ function handleIncomingMessage(event) {
                 if (statusMessage) {
                     statusMessage.textContent = 'Connected to a peer';
                 }
+                clearChat(); // Add this line to clear the chat
                 startConnection(data.isOfferer); // Use the isOfferer flag from the server
                 updateBlurState(); // Add this line
                 break;
@@ -334,7 +335,7 @@ function startConnection(isOfferer) {
         console.log('Closing existing peer connection');
         peerConnection.close();
     }
-    createPeerConnection();
+    createPeerConnection(isOfferer);
 
     console.log(isOfferer ? 'Starting as offerer' : 'Starting as answerer; waiting for offer');
     // Do not create an offer here; it will be handled by onnegotiationneeded
@@ -356,6 +357,7 @@ function startConnection(isOfferer) {
 // Modify your existing nextButton event listener
 nextButton.addEventListener('click', () => {
     console.log('Next button clicked');
+    clearChat(); // Add this line to clear the chat
     sendMessage({ type: 'next' });
     handlePartnerDisconnect();
     // Do not close the WebSocket
@@ -363,6 +365,7 @@ nextButton.addEventListener('click', () => {
 
 disconnectButton.addEventListener('click', () => {
     console.log('Disconnect button clicked');
+    clearChat(); // Add this line to clear the chat
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
@@ -424,17 +427,19 @@ async function flushIceCandidatesQueue() {
     }
 }
 
+let messageQueue = [];
+
 function sendMessage(message) {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
         console.log('Sent message:', message);
     } else {
-        console.warn('WebSocket is not open. Message not sent:', message);
-        // Optionally, you could queue messages here to send when the connection is ready
+        console.log('WebSocket not ready. Queueing message:', message);
+        messageQueue.push(message);
     }
 }
 
-function createPeerConnection() {
+function createPeerConnection(isOfferer) {
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
@@ -444,15 +449,14 @@ function createPeerConnection() {
 
     // Add the onnegotiationneeded event handler here
     peerConnection.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        } catch (error) {
-            console.error('Error during negotiationneeded event:', error);
-        } finally {
-            makingOffer = false;
+        if (isOfferer) {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            } catch (error) {
+                console.error('Error creating offer:', error);
+            }
         }
     };
 
@@ -574,4 +578,13 @@ function addMessageToChat(sender, message) {
     messageElement.textContent = `${sender === 'System' ? '' : sender + ': '}${message}`;
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function clearChat() {
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+    } else {
+        console.error('Chat messages element not found');
+    }
 }
