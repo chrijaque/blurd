@@ -133,8 +133,8 @@ function applyInitialBlur() {
 
 function toggleBlur() {
     console.log('Toggle blur called');
-    if (!removeBlurButton || removeBlurButton.disabled || !isConnectedToPeer) {
-        console.log('Remove blur button is disabled, not found, or not connected to a peer');
+    if (!removeBlurButton || removeBlurButton.disabled || !dataChannel || dataChannel.readyState !== 'open') {
+        console.log('Remove blur button is disabled, not found, or data channel not ready');
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
@@ -144,10 +144,16 @@ function toggleBlur() {
 }
 
 function sendBlurState() {
-    sendMessage({ 
-        type: 'blur-state', 
-        wantsBlurOff: localWantsBlurOff
-    });
+    if (dataChannel && dataChannel.readyState === 'open') {
+        const message = {
+            type: 'blur-state',
+            wantsBlurOff: localWantsBlurOff
+        };
+        dataChannel.send(JSON.stringify(message));
+        console.log('Sent blur state via data channel:', message);
+    } else {
+        console.log('Data channel not ready. Blur state not sent.');
+    }
 }
 
 function updateBlurState() {
@@ -190,11 +196,6 @@ function updateBlurState() {
         removeBlurButton.style.backgroundColor = '';
         removeBlurButton.style.color = '';
         removeBlurButton.disabled = false;
-    }
-
-    // Only send updated state if connected to a peer
-    if (isConnectedToPeer) {
-        sendBlurState();
     }
 
     console.log('Blur state updated');
@@ -444,6 +445,8 @@ function sendMessage(message) {
     }
 }
 
+let dataChannel;
+
 function createPeerConnection(isOfferer) {
     if (peerConnection) {
         console.log('Closing existing peer connection');
@@ -505,8 +508,35 @@ function createPeerConnection(isOfferer) {
         console.error('Local stream not available when creating peer connection');
     }
 
+    if (isOfferer) {
+        dataChannel = peerConnection.createDataChannel('messages');
+        setupDataChannel();
+    } else {
+        peerConnection.ondatachannel = event => {
+            dataChannel = event.channel;
+            setupDataChannel();
+        };
+    }
+
     console.log('Peer connection created');
     return peerConnection;
+}
+
+function setupDataChannel() {
+    dataChannel.onopen = () => console.log('Data channel opened');
+    dataChannel.onclose = () => console.log('Data channel closed');
+    dataChannel.onmessage = handleDataChannelMessage;
+}
+
+function handleDataChannelMessage(event) {
+    const message = JSON.parse(event.data);
+    console.log('Received data channel message:', message);
+
+    if (message.type === 'blur-state') {
+        remoteWantsBlurOff = message.wantsBlurOff;
+        updateBlurState();
+    }
+    // Handle other message types as needed
 }
 
 let isAudioEnabled = false;
