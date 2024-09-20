@@ -138,8 +138,12 @@ function toggleBlur() {
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
-    sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
     updateBlurState();
+    sendMessage({ 
+        type: 'blur-preference', 
+        wantsBlurOff: localWantsBlurOff,
+        isAccepting: remoteWantsBlurOff // This indicates if we're accepting a remote request
+    });
 }
 
 function updateBlurState() {
@@ -272,6 +276,11 @@ function handleIncomingMessage(event) {
             break;
         case 'blur-preference':
             remoteWantsBlurOff = data.wantsBlurOff;
+            if (data.isAccepting && localWantsBlurOff) {
+                // Both peers have agreed to remove blur
+                localWantsBlurOff = true;
+                remoteWantsBlurOff = true;
+            }
             updateBlurState();
             break;
         case 'chat':
