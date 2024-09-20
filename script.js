@@ -138,13 +138,8 @@ function toggleBlur() {
         return;
     }
     localWantsBlurOff = !localWantsBlurOff;
-    updateBlurState();
     sendMessage({ type: 'blur-preference', wantsBlurOff: localWantsBlurOff });
-    
-    if (localWantsBlurOff) {
-        removeBlurButton.textContent = 'Waiting for partner accept';
-        removeBlurButton.disabled = true;
-    }
+    updateBlurState();
 }
 
 function updateBlurState() {
@@ -172,20 +167,22 @@ function updateBlurState() {
         removeBlurButton.style.backgroundColor = '';
         removeBlurButton.style.color = '';
         removeBlurButton.disabled = true;
+    } else if (!localWantsBlurOff && remoteWantsBlurOff) {
+        localVideo.style.filter = 'blur(10px)';
+        remoteVideo.style.filter = 'blur(10px)';
+        removeBlurButton.textContent = 'Remove Blur';
+        removeBlurButton.style.backgroundColor = 'green';
+        removeBlurButton.style.color = 'white';
+        removeBlurButton.disabled = false;
+        addMessageToChat('System', "Your partner wants to remove blur. Click 'Remove Blur' to accept.");
     } else {
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
-        removeBlurButton.style.backgroundColor = remoteWantsBlurOff ? 'green' : '';
+        removeBlurButton.style.backgroundColor = '';
         removeBlurButton.style.color = '';
         removeBlurButton.disabled = false;
-
-        // Add chat notification if remote peer wants to remove blur
-        if (remoteWantsBlurOff && !localWantsBlurOff) {
-            addMessageToChat('System', "Your partner wants to remove blur. Click 'Remove Blur' to accept.");
-        }
     }
-
     console.log('Blur state updated');
 }
 
