@@ -139,10 +139,13 @@ function toggleBlur() {
     }
     localWantsBlurOff = !localWantsBlurOff;
     updateBlurState();
+    sendBlurState();
+}
+
+function sendBlurState() {
     sendMessage({ 
-        type: 'blur-preference', 
-        wantsBlurOff: localWantsBlurOff,
-        isAccepting: remoteWantsBlurOff // This indicates if we're accepting a remote request
+        type: 'blur-state', 
+        wantsBlurOff: localWantsBlurOff
     });
 }
 
@@ -187,6 +190,10 @@ function updateBlurState() {
         removeBlurButton.style.color = '';
         removeBlurButton.disabled = false;
     }
+
+    // Send updated state to ensure both peers are in sync
+    sendBlurState();
+
     console.log('Blur state updated');
 }
 
@@ -252,6 +259,7 @@ function handleIncomingMessage(event) {
                     statusMessage.textContent = 'Connected to a peer';
                 }
                 startConnection(data.isOfferer); // Use the isOfferer flag from the server
+                updateBlurState(); // Add this line
                 break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -274,13 +282,8 @@ function handleIncomingMessage(event) {
             console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
-        case 'blur-preference':
+        case 'blur-state':
             remoteWantsBlurOff = data.wantsBlurOff;
-            if (data.isAccepting && localWantsBlurOff) {
-                // Both peers have agreed to remove blur
-                localWantsBlurOff = true;
-                remoteWantsBlurOff = true;
-            }
             updateBlurState();
             break;
         case 'chat':
