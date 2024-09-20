@@ -280,6 +280,9 @@ function handleIncomingMessage(event) {
         case 'chat':
             addMessageToChat('Peer', data.message);
             break;
+        case 'audio-state':
+            addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
+            break;
         default:
             console.log('Unknown message type:', data.type);
     }
@@ -515,7 +518,12 @@ function toggleAudio() {
             track.enabled = isAudioEnabled;
         });
         toggleAudioButton.textContent = isAudioEnabled ? 'Disable Audio' : 'Enable Audio';
+        notifyAudioStateChange();
     }
+}
+
+function notifyAudioStateChange() {
+    sendMessage({ type: 'audio-state', enabled: isAudioEnabled });
 }
 
 // Add this to your initialization code
