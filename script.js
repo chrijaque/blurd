@@ -472,7 +472,13 @@ function createPeerConnection() {
     // Add local stream to peer connection
     if (localStream) {
         localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
+            const sender = peerConnection.addTrack(track, localStream);
+            if (track.kind === 'audio') {
+                sender.setParameters({
+                    ...sender.getParameters(),
+                    encodings: [{ dtx: true }] // Enable Discontinuous Transmission for audio
+                });
+            }
         });
     } else {
         console.error('Local stream not available when creating peer connection');
@@ -482,6 +488,9 @@ function createPeerConnection() {
     return peerConnection;
 }
 
+let isAudioEnabled = false;
+const toggleAudioButton = document.getElementById('toggleAudioButton');
+
 async function setupLocalStream() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -489,11 +498,28 @@ async function setupLocalStream() {
         if (localVideo) {
             localVideo.srcObject = localStream;
         }
+        // Mute audio by default
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = false;
+        });
         console.log('Local stream set up successfully');
     } catch (error) {
         console.error('Error setting up local stream:', error);
     }
 }
+
+function toggleAudio() {
+    if (localStream) {
+        isAudioEnabled = !isAudioEnabled;
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = isAudioEnabled;
+        });
+        toggleAudioButton.textContent = isAudioEnabled ? 'Disable Audio' : 'Enable Audio';
+    }
+}
+
+// Add this to your initialization code
+toggleAudioButton.addEventListener('click', toggleAudio);
 
 // Wrap the initialization in an async function
 async function initializeConnection() {
