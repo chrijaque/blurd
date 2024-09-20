@@ -20,6 +20,9 @@ video {
     margin: 0 10px;
     background-color: black;
     border: 2px solid #ddd;
+}
+
+#localVideo, #remoteVideo {
     transform: scaleX(-1);
 }
 
