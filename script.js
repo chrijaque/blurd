@@ -159,7 +159,7 @@ function createPeerConnection() {
     peerConnection.onnegotiationneeded = async () => {
         try {
             makingOffer = true;
-            await peerConnection.setLocalDescription(await peerConnection.createOffer());
+            await peerConnection.setLocalDescription();
             sendMessage({ type: 'offer', offer: peerConnection.localDescription });
         } catch (err) {
             console.error(err);
@@ -257,9 +257,10 @@ function handleIncomingMessage(event) {
             if (statusMessage) {
                 statusMessage.textContent = 'Connected to a peer';
             }
+            polite = data.isOfferer; // Set politeness based on role
+            startConnection(data.isOfferer);
             clearChat();
             resetBlurState();
-            startConnection(data.isOfferer);
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
@@ -270,11 +271,11 @@ function handleIncomingMessage(event) {
             break;
         case 'offer':
             console.log('Received offer');
-            handleOffer(data.offer);
+            handleOfferOrAnswer(new RTCSessionDescription(data.offer), true);
             break;
         case 'answer':
             console.log('Received answer');
-            handleAnswer(data.answer);
+            handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
             break;
         case 'ice-candidate':
             console.log('Received ICE candidate');
@@ -298,7 +299,6 @@ function handleIncomingMessage(event) {
 
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
-    polite = !isOfferer; // If you're the offerer, you're impolite
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
@@ -306,48 +306,27 @@ function startConnection(isOfferer) {
     createPeerConnection();
 
     if (isOfferer) {
-        peerConnection.onnegotiationneeded = async () => {
-            try {
-                await peerConnection.setLocalDescription(await peerConnection.createOffer());
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            } catch (err) {
-                console.error('Error creating offer:', err);
-            }
-        };
-    }
-
-    console.log(isOfferer ? 'Starting as offerer' : 'Starting as answerer; waiting for offer');
-}
-
-async function handleOffer(offer) {
-    if (!peerConnection) {
-        console.error('PeerConnection not initialized. Cannot handle offer.');
-        return;
-    }
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-    } catch (error) {
-        console.error('Error handling offer:', error);
+        peerConnection.onnegotiationneeded();
     }
 }
 
-async function handleAnswer(answer) {
-    if (!peerConnection) {
-        console.error('PeerConnection not initialized. Cannot handle answer.');
+async function handleOfferOrAnswer(description, isOffer) {
+    const offerCollision = isOffer &&
+                           (makingOffer || peerConnection.signalingState !== "stable");
+
+    ignoreOffer = !polite && offerCollision;
+    if (ignoreOffer) {
         return;
     }
+
     try {
-        const currentRemoteDescription = peerConnection.remoteDescription;
-        if (currentRemoteDescription && currentRemoteDescription.type === 'offer') {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        } else {
-            console.warn('Ignoring answer as there is no matching offer');
+        await peerConnection.setRemoteDescription(description);
+        if (isOffer) {
+            await peerConnection.setLocalDescription();
+            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
         }
-    } catch (error) {
-        console.error('Error handling answer:', error);
+    } catch (err) {
+        console.error('Error handling offer or answer:', err);
     }
 }
 
