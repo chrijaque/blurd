@@ -2,38 +2,57 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Random Video Chat (Omegle-like)</title>
+    <title>Random Video Chat</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Include any other meta tags and CSS files -->
 </head>
 <body>
-    <h1>Random Video Chat</h1>
-    <div id="statusMessage"></div>
-
-    <!-- Video elements for local and remote streams -->
-    <div class="video-container">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <video id="remoteVideo" autoplay playsinline></video>
+    <!-- Landing Page Section -->
+    <div id="landingPage">
+        <h1>Welcome to Random Video Chat</h1>
+        <video id="localVideoPreview" autoplay muted playsinline></video>
+        <button id="toggleBlurButton">Toggle Blur</button>
+        <div class="form-group">
+            <label for="usernameInput">Username:</label>
+            <input type="text" id="usernameInput" required>
+        </div>
+        <div class="form-group">
+            <input type="checkbox" id="termsCheckbox" required>
+            <label for="termsCheckbox">I agree to behave respectfully and follow the terms of use. I understand that this is a video chat application where I will be connected with random peers.</label>
+        </div>
+        <button id="startChatButton" disabled>Start Chat</button>
     </div>
 
-    <!-- Controls for chat interactions -->
-    <div class="controls">
-        <button id="nextButton">Next</button>
-        <button id="disconnectButton">Disconnect</button>
-        <button id="toggleAudioButton">Enable Audio</button>
-        <button id="removeBlurButton">Remove Blur</button>
-    </div>
+    <!-- Chat Interface Section -->
+    <div id="chatPage" style="display: none;">
+        <h1>Random Video Chat</h1>
+        <div id="statusMessage">Waiting for peer...</div>
 
-    <!-- Add this after your video elements and before the control buttons -->
-    <div id="chatBox" class="chat-box">
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="chat-input">
-            <input type="text" id="chatInput" placeholder="Type a message...">
-            <button id="sendMessageButton">Send</button>
+        <!-- Video elements for local and remote streams -->
+        <div class="video-container">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+
+        <!-- Controls for chat interactions -->
+        <div class="controls">
+            <button id="nextButton">Next</button>
+            <button id="disconnectButton">Disconnect</button>
+            <button id="toggleAudioButton">Enable Audio</button>
+            <button id="removeBlurButton">Remove Blur</button>
+        </div>
+
+        <!-- Chat Box -->
+        <div id="chatBox" class="chat-box">
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input">
+                <input type="text" id="chatInput" placeholder="Type a message...">
+                <button id="sendMessageButton">Send</button>
+            </div>
         </div>
     </div>
 
+    <!-- Include the combined JavaScript file -->
     <script src="script.js"></script>
 </body>
 </html>
