@@ -629,3 +629,13 @@ function resetBlurState() {
     remoteWantsBlurOff = false;
     updateBlurState();
 }
+
+// Display the username
+const usernameDisplay = document.getElementById('usernameDisplay');
+const username = localStorage.getItem('username');
+if (username) {
+    usernameDisplay.textContent = `Welcome, ${username}!`;
+} else {
+    // If no username is found, redirect back to the landing page
+    window.location.href = 'landing.html';
+}
