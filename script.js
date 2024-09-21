@@ -173,15 +173,26 @@ function createPeerConnection() {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'failed') {
             console.log('ICE connection failed, restarting');
-            peerConnection.restartIce();
+            restartIce();
         } else if (peerConnection.iceConnectionState === 'connected') {
             console.log('ICE connection established');
             // You can add any additional logic here when the connection is successful
+        } else if (peerConnection.iceConnectionState === 'disconnected') {
+            console.log('ICE connection disconnected, attempting to reconnect');
+            setTimeout(restartIce, 2000); // Wait 2 seconds before attempting to restart
         }
     };
 
     peerConnection.onsignalingstatechange = () => {
         console.log('Signaling state:', peerConnection.signalingState);
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state change:', peerConnection.connectionState);
+    };
+
+    peerConnection.onicegatheringstatechange = () => {
+        console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
 
     // Add local stream
@@ -333,24 +344,18 @@ async function handleOfferOrAnswer(description, isOffer) {
     }
 
     try {
+        await peerConnection.setRemoteDescription(description);
         if (isOffer) {
-            if (peerConnection.signalingState !== "stable") {
-                console.log('Signaling state is not stable, rolling back');
-                await Promise.all([
-                    peerConnection.setLocalDescription({type: "rollback"}),
-                    peerConnection.setRemoteDescription(description)
-                ]);
-            } else {
-                await peerConnection.setRemoteDescription(description);
-            }
             await peerConnection.setLocalDescription();
             sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        } else {
-            if (peerConnection.signalingState === "stable") {
-                console.log('Received answer in stable state, ignoring');
-                return;
-            }
-            await peerConnection.setRemoteDescription(description);
+        }
+
+        // Add queued ICE candidates after setting remote description
+        while (iceCandidatesQueue.length) {
+            const candidate = iceCandidatesQueue.shift();
+            await peerConnection.addIceCandidate(candidate).catch(e => {
+                console.error('Error adding queued ice candidate', e);
+            });
         }
     } catch (err) {
         console.error('Error handling offer or answer:', err);
@@ -502,7 +507,7 @@ function updateBlurState() {
 
 function toggleBlur() {
     console.log('Toggle blur called');
-    if (!removeBlurButton || removeBlurButton.disabled || !dataChannel || dataChannel.readyState !== 'open') {
+    if (!removeBlurButton || removeBlurButton.disabled || !peerConnection || !dataChannel || dataChannel.readyState !== 'open') {
         console.log('Remove blur button is disabled, not found, or data channel not ready');
         return;
     }
@@ -665,3 +670,27 @@ function setupBlurEffect() {
     removeBlurButton.addEventListener('click', toggleBlur);
     console.log('Blur effect setup complete');
 }
+
+function restartIce() {
+    if (peerConnection) {
+        console.log('Restarting ICE connection');
+        peerConnection.restartIce();
+        peerConnection.createOffer({ iceRestart: true })
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => console.error('Error during ICE restart:', error));
+    }
+}
+
+function checkConnectionStatus() {
+    if (peerConnection) {
+        console.log('Connection status:', peerConnection.connectionState);
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        console.log('Signaling state:', peerConnection.signalingState);
+    }
+}
+
+// Call this function periodically
+setInterval(checkConnectionStatus, 5000);
