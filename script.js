@@ -117,36 +117,69 @@ function startChat() {
 
 async function initializeConnection() {
     try {
-        await setupLocalStream(); // Set up local stream with audio
-        // The peer connection will be created when pairing occurs
-    } catch (error) {
-        console.error('Error during initialization:', error);
-    }
-}
-
-async function setupLocalStream() {
-    try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (localVideo) {
-            localVideo.srcObject = localStream;
-        }
-        // Apply initial blur to local video
-        applyInitialBlur();
-        // Mute audio by default
-        localStream.getAudioTracks().forEach(track => {
-            track.enabled = false;
-        });
+        localVideo.srcObject = localStream;
         console.log('Local stream set up successfully for chat');
+        createPeerConnection();
     } catch (error) {
-        console.error('Error setting up local stream for chat:', error);
+        console.error('Error setting up local stream:', error);
     }
 }
 
-function applyInitialBlur() {
-    localVideo.style.filter = localWantsBlurOff ? 'none' : 'blur(10px)';
+function createPeerConnection() {
+    const configuration = {
+        iceServers: [
+            {
+                urls: ["stun:stun.l.google.com:19302"]
+            },
+            // Include your TURN server configuration if needed
+        ],
+        iceTransportPolicy: 'all',
+        iceCandidatePoolSize: 0, // Disable pre-gathering
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+    };
+
+    peerConnection = new RTCPeerConnection(configuration);
+
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
+        }
+    };
+
+    peerConnection.ontrack = event => {
+        console.log('Received remote track', event);
+        if (remoteVideo.srcObject !== event.streams[0]) {
+            remoteVideo.srcObject = event.streams[0];
+            console.log('Setting remote video stream');
+        }
+    };
+
+    peerConnection.onnegotiationneeded = async () => {
+        try {
+            makingOffer = true;
+            await peerConnection.setLocalDescription(await peerConnection.createOffer());
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            makingOffer = false;
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        if (peerConnection.iceConnectionState === 'failed') {
+            peerConnection.restartIce();
+        }
+    };
+
+    // Add local stream
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    console.log('Peer connection created');
 }
 
-// WebSocket and Signaling Functions
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
 
@@ -286,76 +319,6 @@ function startConnection(isOfferer) {
     console.log(isOfferer ? 'Starting as offerer' : 'Starting as answerer; waiting for offer');
 }
 
-function createPeerConnection() {
-    console.log('Creating new peer connection');
-    const configuration = {
-        iceServers: [
-            {
-                urls: ["stun:stun.l.google.com:19302"]
-            },
-            // Include your TURN server configuration if needed
-        ],
-        iceTransportPolicy: 'all',
-        iceCandidatePoolSize: 0, // Disable pre-gathering
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
-    };
-
-    peerConnection = new RTCPeerConnection(configuration);
-
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            console.log('Sending ICE candidate');
-            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
-        }
-    };
-
-    peerConnection.ontrack = event => {
-        console.log('Received remote track', event);
-        if (remoteVideo && event.streams && event.streams[0]) {
-            console.log('Setting remote video stream');
-            remoteVideo.srcObject = event.streams[0];
-            updateBlurState(); // Apply blur effect to remote video
-        }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        updateConnectionStatus();
-    };
-
-    peerConnection.onsignalingstatechange = () => {
-        console.log('Signaling state:', peerConnection.signalingState);
-    };
-
-    // Add local stream to peer connection
-    if (localStream) {
-        localStream.getTracks().forEach(track => {
-            const sender = peerConnection.addTrack(track, localStream);
-            if (track.kind === 'audio') {
-                sender.setParameters({
-                    ...sender.getParameters(),
-                    encodings: [{ dtx: true }] // Enable Discontinuous Transmission for audio
-                });
-            }
-        });
-    } else {
-        console.error('Local stream not available when creating peer connection');
-    }
-
-    if (isOfferer) {
-        dataChannel = peerConnection.createDataChannel('messages');
-        setupDataChannel();
-    } else {
-        peerConnection.ondatachannel = event => {
-            dataChannel = event.channel;
-            setupDataChannel();
-        };
-    }
-
-    console.log('Peer connection created');
-}
-
 async function handleOffer(offer) {
     if (!peerConnection) {
         console.error('PeerConnection not initialized. Cannot handle offer.');
@@ -377,7 +340,12 @@ async function handleAnswer(answer) {
         return;
     }
     try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        const currentRemoteDescription = peerConnection.remoteDescription;
+        if (currentRemoteDescription && currentRemoteDescription.type === 'offer') {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        } else {
+            console.warn('Ignoring answer as there is no matching offer');
+        }
     } catch (error) {
         console.error('Error handling answer:', error);
     }
