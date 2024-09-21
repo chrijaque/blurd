@@ -270,13 +270,23 @@ function startConnection(isOfferer) {
         console.log('Closing existing peer connection');
         peerConnection.close();
     }
-    createPeerConnection(isOfferer);
+    createPeerConnection();
+
+    if (isOfferer) {
+        peerConnection.onnegotiationneeded = async () => {
+            try {
+                await peerConnection.setLocalDescription(await peerConnection.createOffer());
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            } catch (err) {
+                console.error('Error creating offer:', err);
+            }
+        };
+    }
 
     console.log(isOfferer ? 'Starting as offerer' : 'Starting as answerer; waiting for offer');
-    // Do not create an offer here; it will be handled by onnegotiationneeded
 }
 
-function createPeerConnection(isOfferer) {
+function createPeerConnection() {
     console.log('Creating new peer connection');
     const configuration = {
         iceServers: [
@@ -292,19 +302,6 @@ function createPeerConnection(isOfferer) {
     };
 
     peerConnection = new RTCPeerConnection(configuration);
-
-    peerConnection.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        } catch (error) {
-            console.error('Error during negotiationneeded event:', error);
-        } finally {
-            makingOffer = false;
-        }
-    };
 
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
@@ -359,37 +356,31 @@ function createPeerConnection(isOfferer) {
     console.log('Peer connection created');
 }
 
-function handleOffer(offer) {
-    const readyForOffer = !makingOffer && (peerConnection.signalingState === "stable" || peerConnection.signalingState === "have-local-offer");
-    const offerCollision = !readyForOffer;
-
-    ignoreOffer = !polite && offerCollision;
-    if (ignoreOffer) {
-        console.log('Ignoring offer due to collision');
+async function handleOffer(offer) {
+    if (!peerConnection) {
+        console.error('PeerConnection not initialized. Cannot handle offer.');
         return;
     }
-
-    peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
-        .then(() => peerConnection.createAnswer())
-        .then(answer => peerConnection.setLocalDescription(answer))
-        .then(() => {
-            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        })
-        .catch(error => console.error('Error handling offer:', error));
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+    } catch (error) {
+        console.error('Error handling offer:', error);
+    }
 }
 
-function handleAnswer(answer) {
-    peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-        .then(() => {
-            // Flush any queued ICE candidates
-            iceCandidatesQueue.forEach(candidate => {
-                peerConnection.addIceCandidate(candidate).catch(e => {
-                    console.error('Error adding remote ICE candidate after answer:', e);
-                });
-            });
-            iceCandidatesQueue = [];
-        })
-        .catch(error => console.error('Error handling answer:', error));
+async function handleAnswer(answer) {
+    if (!peerConnection) {
+        console.error('PeerConnection not initialized. Cannot handle answer.');
+        return;
+    }
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (error) {
+        console.error('Error handling answer:', error);
+    }
 }
 
 function handleIceCandidate(candidate) {
@@ -673,4 +664,23 @@ function initializeChat() {
     setupWebSocket();
     setupChat();
     setupBlurEffect();
+}
+
+function setupBlurEffect() {
+    console.log('Setting up blur effect');
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const removeBlurButton = document.getElementById('removeBlurButton');
+
+    if (!localVideo || !remoteVideo || !removeBlurButton) {
+        console.error('Video elements or remove blur button not found');
+        return;
+    }
+
+    // Apply initial blur
+    localVideo.style.filter = 'blur(10px)';
+    remoteVideo.style.filter = 'blur(10px)';
+
+    removeBlurButton.addEventListener('click', toggleBlur);
+    console.log('Blur effect setup complete');
 }
