@@ -129,15 +129,16 @@ async function initializeConnection() {
 function createPeerConnection() {
     const configuration = {
         iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
             {
-                urls: ["stun:stun.l.google.com:19302"]
-            },
-            // Include your TURN server configuration if needed
+                urls: 'turn:numb.viagenie.ca',
+                username: 'webrtc@live.com',
+                credential: 'muazkh'
+            }
         ],
-        iceTransportPolicy: 'all',
-        iceCandidatePoolSize: 0, // Disable pre-gathering
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
+        iceCandidatePoolSize: 10,
     };
 
     peerConnection = new RTCPeerConnection(configuration);
@@ -173,6 +174,9 @@ function createPeerConnection() {
         if (peerConnection.iceConnectionState === 'failed') {
             console.log('ICE connection failed, restarting');
             peerConnection.restartIce();
+        } else if (peerConnection.iceConnectionState === 'connected') {
+            console.log('ICE connection established');
+            // You can add any additional logic here when the connection is successful
         }
     };
 
@@ -182,6 +186,8 @@ function createPeerConnection() {
 
     // Add local stream
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    setupDataChannel();
 
     console.log('Peer connection created');
 }
@@ -364,9 +370,14 @@ function handleIceCandidate(candidate) {
 }
 
 function setupDataChannel() {
-    dataChannel.onopen = () => console.log('Data channel opened');
-    dataChannel.onclose = () => console.log('Data channel closed');
-    dataChannel.onmessage = handleDataChannelMessage;
+    if (peerConnection.createDataChannel) {
+        dataChannel = peerConnection.createDataChannel('chat');
+        dataChannel.onopen = () => console.log('Data channel opened');
+        dataChannel.onclose = () => console.log('Data channel closed');
+        dataChannel.onmessage = handleDataChannelMessage;
+    } else {
+        console.error('Data channels are not supported');
+    }
 }
 
 function handleDataChannelMessage(event) {
