@@ -151,9 +151,11 @@ function createPeerConnection() {
 
     peerConnection.ontrack = event => {
         console.log('Received remote track', event);
-        if (remoteVideo.srcObject !== event.streams[0]) {
-            remoteVideo.srcObject = event.streams[0];
-            console.log('Setting remote video stream');
+        if (event.track.kind === 'video') {
+            if (remoteVideo.srcObject !== event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+                console.log('Setting remote video stream');
+            }
         }
     };
 
@@ -176,7 +178,7 @@ function createPeerConnection() {
             restartIce();
         } else if (peerConnection.iceConnectionState === 'connected') {
             console.log('ICE connection established');
-            // You can add any additional logic here when the connection is successful
+            checkRelayConnection();
         } else if (peerConnection.iceConnectionState === 'disconnected') {
             console.log('ICE connection disconnected, attempting to reconnect');
             setTimeout(restartIce, 2000); // Wait 2 seconds before attempting to restart
@@ -199,6 +201,7 @@ function createPeerConnection() {
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
     setupDataChannel();
+    forceRelayICECandidates();
 
     console.log('Peer connection created');
 }
@@ -363,11 +366,11 @@ async function handleOfferOrAnswer(description, isOffer) {
 }
 
 function handleIceCandidate(candidate) {
-    console.log('Handling ICE candidate:', candidate);
+    console.log('Handling ICE candidate:', JSON.stringify(candidate));
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-        peerConnection.addIceCandidate(candidate).catch(e => {
-            console.error('Error adding received ice candidate', e);
-        });
+        peerConnection.addIceCandidate(candidate)
+            .then(() => console.log('ICE candidate added successfully'))
+            .catch(e => console.error('Error adding received ice candidate', e));
     } else {
         console.log('Queueing ICE candidate');
         iceCandidatesQueue.push(candidate);
@@ -692,5 +695,34 @@ function checkConnectionStatus() {
     }
 }
 
+function forceRelayICECandidates() {
+    if (peerConnection) {
+        peerConnection.getTransceivers().forEach(transceiver => {
+            transceiver.sender.setParameters({
+                ...transceiver.sender.getParameters(),
+                encodings: [{ networkPriority: 'low' }]
+            });
+        });
+    }
+}
+
+function checkRelayConnection() {
+    if (peerConnection) {
+        peerConnection.getStats(null).then(stats => {
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    console.log('Active candidate pair:', report);
+                    if (report.remoteCandidateType === 'relay' || report.localCandidateType === 'relay') {
+                        console.log('Connection is using a relay (TURN) server');
+                    } else {
+                        console.log('Connection is not using a relay');
+                    }
+                }
+            });
+        });
+    }
+}
+
 // Call this function periodically
 setInterval(checkConnectionStatus, 5000);
+setInterval(checkRelayConnection, 5000);
