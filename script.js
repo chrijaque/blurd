@@ -169,9 +169,15 @@ function createPeerConnection() {
     };
 
     peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'failed') {
+            console.log('ICE connection failed, restarting');
             peerConnection.restartIce();
         }
+    };
+
+    peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state:', peerConnection.signalingState);
     };
 
     // Add local stream
@@ -316,14 +322,29 @@ async function handleOfferOrAnswer(description, isOffer) {
 
     ignoreOffer = !polite && offerCollision;
     if (ignoreOffer) {
+        console.log('Ignoring offer due to collision');
         return;
     }
 
     try {
-        await peerConnection.setRemoteDescription(description);
         if (isOffer) {
+            if (peerConnection.signalingState !== "stable") {
+                console.log('Signaling state is not stable, rolling back');
+                await Promise.all([
+                    peerConnection.setLocalDescription({type: "rollback"}),
+                    peerConnection.setRemoteDescription(description)
+                ]);
+            } else {
+                await peerConnection.setRemoteDescription(description);
+            }
             await peerConnection.setLocalDescription();
             sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+        } else {
+            if (peerConnection.signalingState === "stable") {
+                console.log('Received answer in stable state, ignoring');
+                return;
+            }
+            await peerConnection.setRemoteDescription(description);
         }
     } catch (err) {
         console.error('Error handling offer or answer:', err);
@@ -331,11 +352,13 @@ async function handleOfferOrAnswer(description, isOffer) {
 }
 
 function handleIceCandidate(candidate) {
+    console.log('Handling ICE candidate:', candidate);
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(candidate).catch(e => {
             console.error('Error adding received ice candidate', e);
         });
     } else {
+        console.log('Queueing ICE candidate');
         iceCandidatesQueue.push(candidate);
     }
 }
