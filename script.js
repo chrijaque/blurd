@@ -128,16 +128,20 @@ async function initializeConnection() {
 
 function createPeerConnection() {
     const configuration = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            {
-                urls: 'turn:numb.viagenie.ca',
-                username: 'webrtc@live.com',
-                credential: 'muazkh'
-            }
-        ],
+        iceServers: [{
+            urls: [ "stun:fr-turn1.xirsys.com" ]
+         }, {
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004",
+            urls: [
+                "turn:fr-turn1.xirsys.com:80?transport=udp",
+                "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+                "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+            ]
+         }],
         iceCandidatePoolSize: 10,
     };
 
@@ -197,14 +201,24 @@ function createPeerConnection() {
         console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
 
-    // Add local stream
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+     // Add local stream
+     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-    setupDataChannel();
-    forceRelayICECandidates();
-
-    console.log('Peer connection created');
-}
+     // Set up data channel based on role
+     if (!polite) {
+         // Offerer creates the data channel
+         dataChannel = peerConnection.createDataChannel('chat');
+         setupDataChannel();
+     } else {
+         // Answerer listens for data channel
+         peerConnection.ondatachannel = event => {
+             dataChannel = event.channel;
+             setupDataChannel();
+         };
+     }
+ 
+     console.log('Peer connection created');
+ }
 
 function setupWebSocket() {
     socket = new WebSocket('wss://blurd.adaptable.app');
@@ -277,17 +291,17 @@ function handleIncomingMessage(event) {
                 statusMessage.textContent = 'Waiting for a peer...';
             }
             break;
-        case 'paired':
+         case 'paired':
             console.log('Paired with a new peer');
             isConnectedToPeer = true;
-            if (statusMessage) {
+                          if (statusMessage) {
                 statusMessage.textContent = 'Connected to a peer';
-            }
-            polite = data.isOfferer; // Set politeness based on role
+               }
+            polite = !data.isOfferer; // Corrected assignment
             startConnection(data.isOfferer);
-            clearChat();
-            resetBlurState();
-            break;
+               clearChat();
+               resetBlurState();
+               break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
             if (statusMessage) {
@@ -325,10 +339,7 @@ function startConnection(isOfferer) {
         peerConnection.close();
     }
     createPeerConnection();
-
-    if (isOfferer) {
-        peerConnection.onnegotiationneeded();
-    }
+    // Do not manually call onnegotiationneeded
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
@@ -373,14 +384,9 @@ function handleIceCandidate(candidate) {
 }
 
 function setupDataChannel() {
-    if (peerConnection.createDataChannel) {
-        dataChannel = peerConnection.createDataChannel('chat');
-        dataChannel.onopen = () => console.log('Data channel opened');
-        dataChannel.onclose = () => console.log('Data channel closed');
-        dataChannel.onmessage = handleDataChannelMessage;
-    } else {
-        console.error('Data channels are not supported');
-    }
+    dataChannel.onopen = () => console.log('Data channel opened');
+    dataChannel.onclose = () => console.log('Data channel closed');
+    dataChannel.onmessage = handleDataChannelMessage;
 }
 
 // Chat Functions
