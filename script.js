@@ -375,9 +375,14 @@ function handleIceCandidate(candidate) {
 }
 
 function setupDataChannel() {
-    dataChannel.onopen = () => console.log('Data channel opened');
-    dataChannel.onclose = () => console.log('Data channel closed');
-    dataChannel.onmessage = handleDataChannelMessage;
+    if (peerConnection.createDataChannel) {
+        dataChannel = peerConnection.createDataChannel('chat');
+        dataChannel.onopen = () => console.log('Data channel opened');
+        dataChannel.onclose = () => console.log('Data channel closed');
+        dataChannel.onmessage = handleDataChannelMessage;
+    } else {
+        console.error('Data channels are not supported');
+    }
 }
 
 function handleDataChannelMessage(event) {
