@@ -89,31 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Chat Initialization Functions
 function initializeChat() {
-    // Hide landing page elements
-    document.getElementById('landingPage').style.display = 'none';
-    // Show chat interface elements
-    document.getElementById('chatPage').style.display = 'block';
-
-    // Display the username
+    // Display the username if needed
     const username = localStorage.getItem('username');
     if (username) {
-        // You can display the username if needed
         console.log(`Welcome, ${username}!`);
-    }
-
-    // Stop the preview stream
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
     }
 
     // Set initial blur preference based on preview
     localWantsBlurOff = !isBlurred;
 
-   // Initialize chat functionalities
-   setupWebSocket();       // Set up WebSocket first
-   setupChat();
-   setupBlurEffect();
-   initializeConnection(); // Get local media stream
+    // Initialize chat functionalities
+    setupWebSocket();       // WebSocket setup before peer connection
+    setupChat();
+    setupBlurEffect();
+    initializeConnection(); // Get local media stream
 }
 
 async function initializeConnection() {
@@ -121,6 +110,7 @@ async function initializeConnection() {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
         console.log('Local stream set up successfully for chat');
+        // Do not call createPeerConnection() here
     } catch (error) {
         console.error('Error setting up local stream:', error);
     }
@@ -283,10 +273,10 @@ function handleIncomingMessage(event) {
             }
             break;
         case 'paired':
-            console.log(`Paired with a new peer: ${data.username}`);
+            console.log('Paired with a new peer');
             isConnectedToPeer = true;
             if (statusMessage) {
-                statusMessage.textContent = `Connected to ${data.username}`;
+                statusMessage.textContent = 'Connected to a peer';
             }
             polite = !data.isOfferer; // Corrected assignment
             startConnection(data.isOfferer);
@@ -579,27 +569,27 @@ function startChat() {
     // Capture the username
     username = usernameInput.value || 'Anonymous';
 
-    // Apply fade-out animation to landing page
-    landingPage.classList.add('fade-out');
+        // Apply fade-out animation to landing page
+        landingPage.classList.add('fade-out');
 
-    // After the fade-out animation completes, hide the landing page and show the chat page
-    setTimeout(() => {
-        landingPage.style.display = 'none';
-        landingPage.classList.remove('fade-out');
-
-        // Show the chat page and apply fade-in animation
-        chatPage.style.display = 'block';
-        chatPage.classList.add('fade-in');
-
-        // Remove the fade-in class after the animation completes to reset the state
+        // After the fade-out animation completes, hide the landing page and show the chat page
         setTimeout(() => {
-            chatPage.classList.remove('fade-in');
-        }, 500); // Match the duration of the fade-in animation
-
-        // Proceed with initializing the chat functionalities
-        initializeChat();
-    }, 500); // Match the duration of the fade-out animation
-}
+            landingPage.style.display = 'none';
+            landingPage.classList.remove('fade-out');
+    
+            // Show the chat page and apply fade-in animation
+            chatPage.style.display = 'block';
+            chatPage.classList.add('fade-in');
+    
+            // Remove the fade-in class after the animation completes to reset the state
+            setTimeout(() => {
+                chatPage.classList.remove('fade-in');
+            }, 500); // Match the duration of the fade-in animation
+    
+            // Proceed with initializing the chat functionalities
+            initializeChat();
+        }, 500); // Match the duration of the fade-out animation
+    }
 
 
 function setupBlurEffect() {
