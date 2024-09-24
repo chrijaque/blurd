@@ -278,6 +278,7 @@ function handleIncomingMessage(event) {
                           if (statusMessage) {
                 statusMessage.textContent = `Connected to ${data.username}`;
             }
+            updateRemoteUsername(data.username); // Update the UI with the remote peer's username
             polite = data.isOfferer; // Set politeness based on role
             startConnection(data.isOfferer);
             clearChat();
@@ -660,6 +661,13 @@ function checkRelayConnection() {
                 }
             });
         });
+    }
+}
+
+function updateRemoteUsername(username) {
+    const remoteUsernameElement = document.getElementById('remoteUsername');
+    if (remoteUsernameElement) {
+        remoteUsernameElement.textContent = `Connected to ${username}`;
     }
 }
 
