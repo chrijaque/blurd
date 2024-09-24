@@ -194,8 +194,18 @@ function createPeerConnection() {
         console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
 
-    setupDataChannel();
-    forceRelayICECandidates();
+    // Set up data channel based on role
+    if (!polite) {
+        // Offerer creates the data channel
+        dataChannel = peerConnection.createDataChannel('chat');
+        setupDataChannel();
+    } else {
+        // Answerer listens for data channel
+        peerConnection.ondatachannel = event => {
+            dataChannel = event.channel;
+            setupDataChannel();
+        };
+    }
 
     console.log('Peer connection created');
 }
@@ -272,17 +282,17 @@ function handleIncomingMessage(event) {
                 statusMessage.textContent = 'Waiting for a peer...';
             }
             break;
-         case 'paired':
+        case 'paired':
             console.log(`Paired with a new peer: ${data.username}`);
             isConnectedToPeer = true;
-                          if (statusMessage) {
+            if (statusMessage) {
                 statusMessage.textContent = `Connected to ${data.username}`;
             }
-            polite = data.isOfferer; // Set politeness based on role
+            polite = !data.isOfferer; // Corrected assignment
             startConnection(data.isOfferer);
             clearChat();
-               resetBlurState();
-               break;
+            resetBlurState();
+            break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
             if (statusMessage) {
@@ -320,10 +330,7 @@ function startConnection(isOfferer) {
         peerConnection.close();
     }
     createPeerConnection();
-
-    if (isOfferer) {
-        peerConnection.onnegotiationneeded();
-    }
+    // Do not manually call onnegotiationneeded
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
@@ -368,14 +375,9 @@ function handleIceCandidate(candidate) {
 }
 
 function setupDataChannel() {
-    if (peerConnection.createDataChannel) {
-        dataChannel = peerConnection.createDataChannel('chat');
-        dataChannel.onopen = () => console.log('Data channel opened');
-        dataChannel.onclose = () => console.log('Data channel closed');
-        dataChannel.onmessage = handleDataChannelMessage;
-    } else {
-        console.error('Data channels are not supported');
-    }
+    dataChannel.onopen = () => console.log('Data channel opened');
+    dataChannel.onclose = () => console.log('Data channel closed');
+    dataChannel.onmessage = handleDataChannelMessage;
 }
 
 function handleDataChannelMessage(event) {
