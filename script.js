@@ -307,11 +307,6 @@ function handleIncomingMessage(event) {
             console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
-        case 'blur-state':
-            console.log('Received blur state:', data.wantsBlurOff);
-            remoteWantsBlurOff = data.wantsBlurOff;
-            updateBlurState();
-            break;
         case 'chat':
             addMessageToChat('Peer', data.message);
             break;
@@ -386,17 +381,6 @@ function setupDataChannel() {
     } else {
         console.error('Data channels are not supported');
     }
-}
-
-function handleDataChannelMessage(event) {
-    const message = JSON.parse(event.data);
-    console.log('Received data channel message:', message);
-
-    if (message.type === 'blur-state') {
-        remoteWantsBlurOff = message.wantsBlurOff;
-        updateBlurState();
-    }
-    // Handle other message types as needed
 }
 
 // Chat Functions
