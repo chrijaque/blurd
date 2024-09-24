@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Chat Initialization Functions
-function startChat() {
+function initializeChat() {
     // Hide landing page elements
     document.getElementById('landingPage').style.display = 'none';
     // Show chat interface elements
@@ -108,11 +108,11 @@ function startChat() {
     // Set initial blur preference based on preview
     localWantsBlurOff = !isBlurred;
 
-    // Initialize chat functionalities
-    initializeConnection();
-    setupWebSocket();
-    setupChat();
-    setupBlurEffect();
+   // Initialize chat functionalities
+   setupWebSocket();       // Set up WebSocket first
+   setupChat();
+   setupBlurEffect();
+   initializeConnection(); // Get local media stream
 }
 
 async function initializeConnection() {
@@ -120,7 +120,6 @@ async function initializeConnection() {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
         console.log('Local stream set up successfully for chat');
-        createPeerConnection();
     } catch (error) {
         console.error('Error setting up local stream:', error);
     }
@@ -296,10 +295,10 @@ function handleIncomingMessage(event) {
             isConnectedToPeer = true;
                           if (statusMessage) {
                 statusMessage.textContent = 'Connected to a peer';
-               }
+            }
             polite = !data.isOfferer; // Corrected assignment
             startConnection(data.isOfferer);
-               clearChat();
+            clearChat();
                resetBlurState();
                break;
         case 'partnerDisconnected':
@@ -628,22 +627,6 @@ function startChat() {
     }, 500); // Match the duration of the fade-out animation
 }
 
-function initializeChat() {
-    // Display the username if needed
-    const username = localStorage.getItem('username');
-    if (username) {
-        console.log(`Welcome, ${username}!`);
-    }
-
-    // Set initial blur preference based on preview
-    localWantsBlurOff = !isBlurred;
-
-    // Initialize chat functionalities
-    initializeConnection();
-    setupWebSocket();
-    setupChat();
-    setupBlurEffect();
-}
 
 function setupBlurEffect() {
     console.log('Setting up blur effect');
