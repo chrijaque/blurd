@@ -232,17 +232,6 @@ function handleWebSocketMessage(event) {
     console.log('Received WebSocket message:', message);
 
     switch (message.type) {
-        case 'blur_state':
-            console.log('Received blur state update:', message);
-            if (message.username !== localStorage.getItem('username')) {
-                remoteWantsBlurOff = message.wantsBlurOff;
-                console.log('Updated remote blur state:', remoteWantsBlurOff);
-                updateBlurState();
-            } else {
-                console.log('Ignoring own blur state message');
-            }
-            break;
-
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
@@ -359,19 +348,23 @@ function handleIceCandidate(candidate) {
 }
 
 function setupDataChannel() {
-    if (peerConnection.createDataChannel) {
-        dataChannel = peerConnection.createDataChannel('chat');
+    if (dataChannel) {
+        dataChannel.onopen = () => console.log('Data channel opened');
+        dataChannel.onclose = () => console.log('Data channel closed');
         dataChannel.onmessage = handleDataChannelMessage;
     } else {
-        console.error('Data channels are not supported');
+        console.error('Data channel is not available');
     }
 }
 
 function handleDataChannelMessage(event) {
     const message = JSON.parse(event.data);
-    if (message.type === 'blurState') {
-        remoteWantsBlurOff = message.blurState;
+    console.log('Received data channel message:', message);
+    if (message.type === 'blur_state') {
+        remoteWantsBlurOff = message.wantsBlurOff;
         updateBlurState();
+    } else {
+        // Handle other message types if necessary
     }
 }
 
@@ -486,13 +479,17 @@ function toggleBlur() {
 }
 
 function sendBlurState() {
-    const message = {
-        type: 'blur_state',
-        wantsBlurOff: localWantsBlurOff,
-        username: localStorage.getItem('username')
-    };
-    console.log('Sending blur state:', message);
-    sendMessage(message);
+    if (dataChannel && dataChannel.readyState === 'open') {
+        const message = {
+            type: 'blur_state',
+            wantsBlurOff: localWantsBlurOff,
+            username: localStorage.getItem('username')
+        };
+        console.log('Sending blur state via data channel:', message);
+        dataChannel.send(JSON.stringify(message));
+    } else {
+        console.log('Data channel not ready. Blur state not sent.');
+    }
 }
 
 // Audio Control Functions
