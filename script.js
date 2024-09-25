@@ -95,8 +95,8 @@ function initializeChat() {
         console.log(`Welcome, ${username}!`);
     }
 
-    // Set initial blur preference based on preview
-    localWantsBlurOff = !isBlurred;
+    // Set initial blur preference
+    localWantsBlurOff = false; // Change this line to ensure blur is on by default
 
     // Initialize chat functionalities
     setupWebSocket();       // WebSocket setup before peer connection
@@ -146,6 +146,9 @@ function createPeerConnection() {
             if (remoteVideo.srcObject !== event.streams[0]) {
                 remoteVideo.srcObject = event.streams[0];
                 console.log('Setting remote video stream');
+                
+                // Add this to ensure the video plays
+                remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
             }
         }
     };
@@ -320,7 +323,14 @@ function startConnection(isOfferer) {
         peerConnection.close();
     }
     createPeerConnection();
-    // Do not manually call onnegotiationneeded
+    
+    // Add local tracks to the peer connection
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+    
+    // Log media streams after a short delay
+    setTimeout(logMediaStreams, 2000);
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
@@ -657,6 +667,22 @@ function checkRelayConnection() {
                 }
             });
         });
+    }
+}
+
+// Add this function to check and log media streams
+function logMediaStreams() {
+    console.log('Local stream:', localStream);
+    console.log('Remote stream:', remoteVideo.srcObject);
+    
+    if (localStream) {
+        console.log('Local video tracks:', localStream.getVideoTracks());
+        console.log('Local audio tracks:', localStream.getAudioTracks());
+    }
+    
+    if (remoteVideo.srcObject) {
+        console.log('Remote video tracks:', remoteVideo.srcObject.getVideoTracks());
+        console.log('Remote audio tracks:', remoteVideo.srcObject.getAudioTracks());
     }
 }
 
