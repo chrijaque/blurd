@@ -28,6 +28,8 @@ let polite = false; // Will be set based on your role
 let isBlurred = true; // For preview
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
+let localRequestSent = false;
+let remoteRequestReceived = false;
 let isConnectedToPeer = false;
 let dataChannel;
 let isAudioEnabled = false;
@@ -437,33 +439,37 @@ function updateBlurState() {
     console.log('Updating blur state:', { localWantsBlurOff, remoteWantsBlurOff });
 
     if (localWantsBlurOff && remoteWantsBlurOff) {
-        console.log('Both want to remove blur');
+        // Both want to remove blur
         localVideo.style.filter = 'none';
         remoteVideo.style.filter = 'none';
-        removeBlurButton.textContent = 'Blur Removed';
+        removeBlurButton.textContent = 'DAAAAMN!';
         removeBlurButton.style.backgroundColor = 'blue';
         removeBlurButton.style.color = 'white';
         removeBlurButton.disabled = true;
         addMessageToChat('System', "Blur has been removed for both parties.");
     } else if (localWantsBlurOff && !remoteWantsBlurOff) {
-        console.log('Local wants to remove blur, waiting for remote');
+        // Local wants to remove blur; waiting for remote
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Waiting for partner';
+        removeBlurButton.style.backgroundColor = 'yellow';
         removeBlurButton.disabled = true;
         addMessageToChat('System', "Waiting for your partner to accept removing the blur.");
     } else if (!localWantsBlurOff && remoteWantsBlurOff) {
-        console.log('Remote wants to remove blur, waiting for local confirmation');
+        // Remote wants to remove blur; waiting for local confirmation
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Accept Remove Blur';
+        removeBlurButton.style.backgroundColor = 'green';
         removeBlurButton.disabled = false;
         addMessageToChat('System', "Your partner wants to remove blur. Click 'Accept Remove Blur' to agree.");
     } else {
-        console.log('Both want blur on');
+        // Both want blur on
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
+        removeBlurButton.style.backgroundColor = '';
+        removeBlurButton.style.color = '';
         removeBlurButton.disabled = false;
     }
 
@@ -472,23 +478,40 @@ function updateBlurState() {
 
 function toggleBlur() {
     console.log('Toggle blur clicked. Current state:', localWantsBlurOff);
-    localWantsBlurOff = !localWantsBlurOff;
-    console.log('New local blur state:', localWantsBlurOff);
-    sendBlurState();
+    if (!localWantsBlurOff) {
+        localWantsBlurOff = true;
+        if (!localRequestSent) {
+            sendBlurState();
+            addMessageToChat('System', "You requested to remove the blur. Waiting for your partner to accept.");
+            localRequestSent = true;
+        }
+    } else if (remoteRequestReceived) {
+        // Accepting the remote peer's request
+        sendBlurState();
+    }
     updateBlurState();
 }
 
 function sendBlurState() {
-    if (dataChannel && dataChannel.readyState === 'open') {
-        const message = {
-            type: 'blur_state',
-            wantsBlurOff: localWantsBlurOff,
-            username: localStorage.getItem('username')
-        };
-        console.log('Sending blur state via data channel:', message);
-        dataChannel.send(JSON.stringify(message));
-    } else {
-        console.log('Data channel not ready. Blur state not sent.');
+    const message = {
+        type: 'blur_state',
+        wantsBlurOff: localWantsBlurOff,
+        username: localStorage.getItem('username')
+    };
+    console.log('Sending blur state:', message);
+    sendMessage(message);
+}
+
+function handleBlurStateUpdate(message) {
+    console.log('Handling blur state update:', message);
+    if (message.username !== localStorage.getItem('username')) {
+        remoteWantsBlurOff = message.wantsBlurOff;
+        if (remoteWantsBlurOff && !remoteRequestReceived) {
+            addMessageToChat('System', "Your partner wants to remove the blur. Click 'Remove Blur' to accept.");
+            remoteRequestReceived = true;
+        }
+        console.log('Updated remote blur state:', remoteWantsBlurOff);
+        updateBlurState();
     }
 }
 
