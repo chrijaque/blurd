@@ -203,6 +203,10 @@ function setupWebSocket() {
         console.log('WebSocket disconnected');
         setTimeout(setupWebSocket, 3000);
     };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
 }
 
 function startHeartbeat() {
@@ -228,6 +232,15 @@ function handleWebSocketMessage(event) {
     console.log('Received WebSocket message:', message);
 
     switch (message.type) {
+        case 'blur_state':
+            console.log('Received blur state update:', message);
+            if (message.username !== localStorage.getItem('username')) {
+                remoteWantsBlurOff = message.wantsBlurOff;
+                console.log('Updated remote blur state:', remoteWantsBlurOff);
+                updateBlurState();
+            }
+            break;
+
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
@@ -267,14 +280,6 @@ function handleWebSocketMessage(event) {
             break;
         case 'audio-state':
             addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
-            break;
-        case 'blur_state':
-            console.log('Received blur state update:', message);
-            if (message.username !== localStorage.getItem('username')) {
-                remoteWantsBlurOff = message.wantsBlurOff;
-                console.log('Updated remote blur state:', remoteWantsBlurOff);
-                updateBlurState();
-            }
             break;
         default:
             console.log('Unhandled message type:', message.type);
@@ -421,6 +426,7 @@ function updateBlurState() {
     console.log('Updating blur state:', { localWantsBlurOff, remoteWantsBlurOff });
 
     if (localWantsBlurOff && remoteWantsBlurOff) {
+        console.log('Both want to remove blur');
         localVideo.style.filter = 'none';
         remoteVideo.style.filter = 'none';
         removeBlurButton.textContent = 'Blur Removed';
@@ -429,18 +435,21 @@ function updateBlurState() {
         removeBlurButton.disabled = true;
         addMessageToChat('System', "Blur has been removed for both parties.");
     } else if (localWantsBlurOff && !remoteWantsBlurOff) {
+        console.log('Local wants to remove blur, waiting for remote');
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Waiting for partner';
         removeBlurButton.disabled = true;
         addMessageToChat('System', "Waiting for your partner to accept removing the blur.");
     } else if (!localWantsBlurOff && remoteWantsBlurOff) {
+        console.log('Remote wants to remove blur, waiting for local confirmation');
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Accept Remove Blur';
         removeBlurButton.disabled = false;
         addMessageToChat('System', "Your partner wants to remove blur. Click 'Accept Remove Blur' to agree.");
     } else {
+        console.log('Both want blur on');
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
@@ -459,11 +468,12 @@ function toggleBlur() {
 }
 
 function sendBlurState() {
-    sendMessage({
+    const message = {
         type: 'blur_state',
         wantsBlurOff: localWantsBlurOff,
         username: localStorage.getItem('username')
-    });
+    };
+    sendMessage(message);
 }
 
 // Audio Control Functions
