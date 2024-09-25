@@ -4,12 +4,12 @@ body {
     background-color: #f8f9fa;
     color: #333;
     line-height: 1.6;
+    margin: 0; /* Remove default margin */
+    padding: 0; /* Remove default padding */
 }
 
 h1 {
-    margin: 30px 0;
-    font-weight: 300;
-    color: #2c3e50;
+    margin: 20px 0;
 }
 
 .video-container {
@@ -36,18 +36,9 @@ video {
 
 button {
     margin: 10px;
-    padding: 12px 24px;
+    padding: 10px 20px;
     font-size: 16px;
     cursor: pointer;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    transition: background-color 0.3s ease;
-}
-
-button:hover {
-    background-color: #2980b9;
 }
 
 #statusMessage {
@@ -104,34 +95,23 @@ button:hover {
     width: 100%;
     max-width: 400px;
     height: auto;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
     transform: scaleX(-1);
-    border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .form-group {
-    margin-bottom: 20px;
-    text-align: left;
+    margin-bottom: 15px;
 }
 #startChatButton {
     display: block;
     width: 100%;
-    padding: 12px;
-    background-color: #2ecc71;
+    padding: 10px;
+    background-color: #007bff;
     color: white;
     border: none;
-    border-radius: 5px;
     cursor: pointer;
-    font-size: 18px;
-    transition: background-color 0.3s ease;
 }
-
-#startChatButton:hover {
-    background-color: #27ae60;
-}
-
 #startChatButton:disabled {
-    background-color: #bdc3c7;
+    background-color: #cccccc;
     cursor: not-allowed;
 }
 
@@ -165,9 +145,11 @@ button:hover {
     width: 100%;
     min-height: 100vh;
     background-color: #f0f0f0;
+    display: flex; /* Add flex display */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
 }
 
-/* Z-index to control stacking order */
 #landingPage {
     z-index: 2;
 }
@@ -176,94 +158,12 @@ button:hover {
     z-index: 1;
 }
 
-#landingPage {
+.landing-content {
     max-width: 600px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 20px;
     padding: 40px 20px;
     background-color: #ffffff;
     border-radius: 10px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-#localVideoPreview {
-    width: 100%;
-    max-width: 400px;
-    height: auto;
-    margin-bottom: 30px;
-    transform: scaleX(-1);
-    border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.form-group {
-    margin-bottom: 20px;
-    text-align: left;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 500;
-    color: #34495e;
-}
-
-#usernameInput {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #e0e0e0;
-    border-radius: 5px;
-    font-size: 16px;
-    transition: border-color 0.3s ease;
-}
-
-#usernameInput:focus {
-    outline: none;
-    border-color: #3498db;
-}
-
-#termsCheckbox {
-    margin-right: 10px;
-}
-
-#termsCheckbox + label {
-    font-size: 14px;
-    color: #7f8c8d;
-}
-
-button {
-    margin: 10px;
-    padding: 12px 24px;
-    font-size: 16px;
-    cursor: pointer;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    transition: background-color 0.3s ease;
-}
-
-button:hover {
-    background-color: #2980b9;
-}
-
-#startChatButton {
-    display: block;
-    width: 100%;
-    padding: 12px;
-    background-color: #2ecc71;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 18px;
-    transition: background-color 0.3s ease;
-}
-
-#startChatButton:hover {
-    background-color: #27ae60;
-}
-
-#startChatButton:disabled {
-    background-color: #bdc3c7;
-    cursor: not-allowed;
 }
