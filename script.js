@@ -245,7 +245,6 @@ function sendMessage(message) {
 
 function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
-    console.log('Received message:', data);
 
     if (data.type === 'pong') {
         // Connection is alive
@@ -350,11 +349,8 @@ async function handleOfferOrAnswer(description, isOffer) {
 }
 
 function handleIceCandidate(candidate) {
-    console.log('Handling ICE candidate:', JSON.stringify(candidate));
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(candidate)
-            .then(() => console.log('ICE candidate added successfully'))
-            .catch(e => console.error('Error adding received ice candidate', e));
     } else {
         iceCandidatesQueue.push(candidate);
     }
