@@ -48,9 +48,7 @@ async function setupLocalPreview() {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         localVideoPreview.srcObject = localStream;
         applyBlurEffectPreview();
-        console.log('Camera accessed successfully for preview');
     } catch (error) {
-        console.error('Error accessing camera:', error);
         alert('Unable to access camera. Please ensure you have given permission and try again.');
     }
 }
@@ -66,7 +64,6 @@ toggleBlurButton.addEventListener('click', () => {
 
 function updateStartChatButton() {
     startChatButton.disabled = !(usernameInput.value.trim() && termsCheckbox.checked);
-    console.log('Start Chat button state updated:', !startChatButton.disabled);
 }
 
 usernameInput.addEventListener('input', updateStartChatButton);
@@ -82,7 +79,6 @@ startChatButton.addEventListener('click', () => {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded');
     setupLocalPreview();
     updateStartChatButton(); // Initial check
 });
@@ -109,7 +105,6 @@ async function initializeConnection() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
-        console.log('Local stream set up successfully for chat');
         // Do not call createPeerConnection() here
     } catch (error) {
         console.error('Error setting up local stream:', error);
@@ -140,12 +135,10 @@ function createPeerConnection() {
     };
 
     peerConnection.ontrack = event => {
-        console.log('Received remote track', event);
         if (event.track.kind === 'video') {
             const remoteVideo = document.getElementById('remoteVideo');
             if (remoteVideo.srcObject !== event.streams[0]) {
                 remoteVideo.srcObject = event.streams[0];
-                console.log('Setting remote video stream');
                 
                 // Add this to ensure the video plays
                 remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
@@ -166,25 +159,19 @@ function createPeerConnection() {
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'failed') {
-            console.log('ICE connection failed, restarting');
             restartIce();
         } else if (peerConnection.iceConnectionState === 'connected') {
-            console.log('ICE connection established');
             checkRelayConnection();
         } else if (peerConnection.iceConnectionState === 'disconnected') {
-            console.log('ICE connection disconnected, attempting to reconnect');
             setTimeout(restartIce, 2000);
         }
     };
 
     peerConnection.onconnectionstatechange = () => {
-        console.log('Connection state change:', peerConnection.connectionState);
     };
 
     peerConnection.onicegatheringstatechange = () => {
-        console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
 
     // Set up data channel based on role
@@ -199,8 +186,6 @@ function createPeerConnection() {
             setupDataChannel();
         };
     }
-
-    console.log('Peer connection created');
 }
 
 function setupWebSocket() {
@@ -294,15 +279,12 @@ function handleIncomingMessage(event) {
             handlePartnerDisconnect();
             break;
         case 'offer':
-            console.log('Received offer');
             handleOfferOrAnswer(new RTCSessionDescription(data.offer), true);
             break;
         case 'answer':
-            console.log('Received answer');
             handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
             break;
         case 'ice-candidate':
-            console.log('Received ICE candidate');
             handleIceCandidate(data.candidate);
             break;
         case 'chat':
@@ -374,7 +356,6 @@ function handleIceCandidate(candidate) {
             .then(() => console.log('ICE candidate added successfully'))
             .catch(e => console.error('Error adding received ice candidate', e));
     } else {
-        console.log('Queueing ICE candidate');
         iceCandidatesQueue.push(candidate);
     }
 }
@@ -382,8 +363,6 @@ function handleIceCandidate(candidate) {
 function setupDataChannel() {
     if (peerConnection.createDataChannel) {
         dataChannel = peerConnection.createDataChannel('chat');
-        dataChannel.onopen = () => console.log('Data channel opened');
-        dataChannel.onclose = () => console.log('Data channel closed');
         dataChannel.onmessage = handleDataChannelMessage;
     } else {
         console.error('Data channels are not supported');
@@ -392,7 +371,6 @@ function setupDataChannel() {
 
 function handleDataChannelMessage(event) {
     const message = JSON.parse(event.data);
-    console.log('Received data channel message:', message);
     if (message.type === 'blurState') {
         remoteWantsBlurOff = message.blurState;
         updateBlurState();
@@ -401,7 +379,6 @@ function handleDataChannelMessage(event) {
 
 // Chat Functions
 function setupChat() {
-    console.log('Setting up chat');
 
     if (chatInput && sendButton && chatMessages) {
         sendButton.addEventListener('click', sendChatMessage);
@@ -631,7 +608,6 @@ function startChat() {
 
 
 function setupBlurEffect() {
-    console.log('Setting up blur effect');
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     const removeBlurButton = document.getElementById('removeBlurButton');
@@ -646,12 +622,10 @@ function setupBlurEffect() {
     remoteVideo.style.filter = 'blur(10px)';
 
     removeBlurButton.addEventListener('click', toggleBlur);
-    console.log('Blur effect setup complete');
 }
 
 function restartIce() {
     if (peerConnection) {
-        console.log('Restarting ICE connection');
         peerConnection.restartIce();
         peerConnection.createOffer({ iceRestart: true })
             .then(offer => peerConnection.setLocalDescription(offer))
@@ -662,13 +636,6 @@ function restartIce() {
     }
 }
 
-function checkConnectionStatus() {
-    if (peerConnection) {
-        console.log('Connection status:', peerConnection.connectionState);
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        console.log('Signaling state:', peerConnection.signalingState);
-    }
-}
 
 function forceRelayICECandidates() {
     if (peerConnection) {
@@ -684,16 +651,6 @@ function forceRelayICECandidates() {
 function checkRelayConnection() {
     if (peerConnection) {
         peerConnection.getStats(null).then(stats => {
-            stats.forEach(report => {
-                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                    console.log('Active candidate pair:', report);
-                    if (report.remoteCandidateType === 'relay' || report.localCandidateType === 'relay') {
-                        console.log('Connection is using a relay (TURN) server');
-                    } else {
-                        console.log('Connection is not using a relay');
-                    }
-                }
-            });
         });
     }
 }
