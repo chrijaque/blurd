@@ -238,6 +238,8 @@ function handleWebSocketMessage(event) {
                 remoteWantsBlurOff = message.wantsBlurOff;
                 console.log('Updated remote blur state:', remoteWantsBlurOff);
                 updateBlurState();
+            } else {
+                console.log('Ignoring own blur state message');
             }
             break;
 
@@ -276,7 +278,23 @@ function handleWebSocketMessage(event) {
             handleIceCandidate(message.candidate);
             break;
         case 'chat':
-            addMessageToChat(message.username, message.message);
+            try {
+                const chatData = JSON.parse(message.message);
+                if (chatData.type === 'blur_state') {
+                    console.log('Received blur state update as chat:', chatData);
+                    if (chatData.username !== localStorage.getItem('username')) {
+                        remoteWantsBlurOff = chatData.wantsBlurOff;
+                        console.log('Updated remote blur state:', remoteWantsBlurOff);
+                        updateBlurState();
+                    } else {
+                        console.log('Ignoring own blur state message');
+                    }
+                } else {
+                    handleChatMessage(message);
+                }
+            } catch (e) {
+                handleChatMessage(message);
+            }
             break;
         case 'audio-state':
             addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
@@ -473,6 +491,7 @@ function sendBlurState() {
         wantsBlurOff: localWantsBlurOff,
         username: localStorage.getItem('username')
     };
+    console.log('Sending blur state:', message);
     sendMessage(message);
 }
 
