@@ -34,7 +34,7 @@ let isAudioEnabled = false;
 let username = '';
 
 // WebSocket setup
-let socket;
+let ws;
 let socketReady = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
@@ -189,69 +189,45 @@ function createPeerConnection() {
 }
 
 function setupWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.app');
+    ws = new WebSocket('wss://blurd.adaptable.app');
 
-    socket.onopen = () => {
+    ws.onopen = () => {
         console.log('WebSocket connected');
-        socketReady = true;
-        reconnectAttempts = 0;
-        intentionalDisconnect = false; // Reset the flag on successful connection
-
-        sendMessage({ type: 'ready' });
-        // Start the heartbeat interval after the socket is open
-        startHeartbeat();
+        // Send a ready message when connected
+        sendMessage({ type: 'ready', username: localStorage.getItem('username') });
     };
 
-    socket.onclose = () => {
+    ws.onmessage = handleWebSocketMessage;
+
+    ws.onclose = () => {
         console.log('WebSocket disconnected');
-        socketReady = false;
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
-
-        // Attempt to reconnect only if the disconnection was unintentional
-        if (!intentionalDisconnect && reconnectAttempts < maxReconnectAttempts) {
-            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
-            reconnectAttempts++;
-            setTimeout(setupWebSocket, reconnectInterval);
-        } else {
-            console.error('Max reconnect attempts reached or intentional disconnect. Please refresh the page.');
-        }
+        setTimeout(setupWebSocket, 3000);
     };
-
-    socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
-
-    socket.onmessage = handleIncomingMessage;
 }
 
 function startHeartbeat() {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(() => {
-        if (document.visibilityState === 'visible' && socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ping' }));
+        if (document.visibilityState === 'visible' && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
         }
     }, 15000); // Every 15 seconds
 }
 
 function sendMessage(message) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        message.username = username;
-        socket.send(JSON.stringify(message));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
         console.log('Sent message:', message);
     } else {
-        console.log('WebSocket not ready. Message not sent:', message);
+        console.error('WebSocket is not open. Cannot send message:', message);
     }
 }
 
-function handleIncomingMessage(event) {
-    const data = JSON.parse(event.data);
+function handleWebSocketMessage(event) {
+    const message = JSON.parse(event.data);
+    console.log('Received WebSocket message:', message);
 
-    if (data.type === 'pong') {
-        // Connection is alive
-        return;
-    }
-
-    switch (data.type) {
+    switch (message.type) {
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
@@ -265,8 +241,8 @@ function handleIncomingMessage(event) {
             if (statusMessage) {
                 statusMessage.textContent = 'Connected to a peer';
             }
-            polite = !data.isOfferer; // Corrected assignment
-            startConnection(data.isOfferer);
+            polite = !message.isOfferer; // Corrected assignment
+            startConnection(message.isOfferer);
             clearChat();
             resetBlurState();
             break;
@@ -278,27 +254,30 @@ function handleIncomingMessage(event) {
             handlePartnerDisconnect();
             break;
         case 'offer':
-            handleOfferOrAnswer(new RTCSessionDescription(data.offer), true);
+            handleOfferOrAnswer(new RTCSessionDescription(message.offer), true);
             break;
         case 'answer':
-            handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
+            handleOfferOrAnswer(new RTCSessionDescription(message.answer), false);
             break;
         case 'ice-candidate':
-            handleIceCandidate(data.candidate);
+            handleIceCandidate(message.candidate);
             break;
         case 'chat':
-            addMessageToChat(data.username, data.message);
+            addMessageToChat(message.username, message.message);
             break;
         case 'audio-state':
-            addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
+            addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
             break;
         case 'blur_state':
-            console.log('Received blur state update:', data);
-            remoteWantsBlurOff = data.wantsBlurOff;
-            updateBlurState();
+            console.log('Received blur state update:', message);
+            if (message.username !== localStorage.getItem('username')) {
+                remoteWantsBlurOff = message.wantsBlurOff;
+                console.log('Updated remote blur state:', remoteWantsBlurOff);
+                updateBlurState();
+            }
             break;
         default:
-            console.log('Unknown message type:', data.type);
+            console.log('Unhandled message type:', message.type);
     }
 }
 
@@ -442,29 +421,26 @@ function updateBlurState() {
     console.log('Updating blur state:', { localWantsBlurOff, remoteWantsBlurOff });
 
     if (localWantsBlurOff && remoteWantsBlurOff) {
-        // Both want to remove blur
         localVideo.style.filter = 'none';
         remoteVideo.style.filter = 'none';
         removeBlurButton.textContent = 'Blur Removed';
         removeBlurButton.style.backgroundColor = 'blue';
         removeBlurButton.style.color = 'white';
         removeBlurButton.disabled = true;
+        addMessageToChat('System', "Blur has been removed for both parties.");
     } else if (localWantsBlurOff && !remoteWantsBlurOff) {
-        // You want to remove blur; waiting for partner
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Waiting for partner';
         removeBlurButton.disabled = true;
         addMessageToChat('System', "Waiting for your partner to accept removing the blur.");
     } else if (!localWantsBlurOff && remoteWantsBlurOff) {
-        // Partner wants to remove blur; ask for confirmation
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Accept Remove Blur';
         removeBlurButton.disabled = false;
         addMessageToChat('System', "Your partner wants to remove blur. Click 'Accept Remove Blur' to agree.");
     } else {
-        // Both want blur on
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Remove Blur';
@@ -483,16 +459,11 @@ function toggleBlur() {
 }
 
 function sendBlurState() {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        const message = {
-            type: 'blur_state',
-            wantsBlurOff: localWantsBlurOff
-        };
-        socket.send(JSON.stringify(message));
-        console.log('Sent blur state:', message);
-    } else {
-        console.error('WebSocket is not open. Cannot send blur state.');
-    }
+    sendMessage({
+        type: 'blur_state',
+        wantsBlurOff: localWantsBlurOff,
+        username: localStorage.getItem('username')
+    });
 }
 
 // Audio Control Functions
@@ -558,7 +529,7 @@ function handleDisconnect() {
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
-    if (socket) socket.close(); // Close the WebSocket only on full disconnect
+    if (ws) ws.close(); // Close the WebSocket only on full disconnect
 }
 
 function updateConnectionStatus() {
@@ -571,7 +542,7 @@ function updateConnectionStatus() {
 
 window.onbeforeunload = () => {
     if (peerConnection) peerConnection.close();
-    if (socket) socket.close();
+    if (ws) ws.close();
 };
 
 function startChat() {
