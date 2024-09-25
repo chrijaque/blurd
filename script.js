@@ -312,6 +312,7 @@ function handleIncomingMessage(event) {
             addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
             break;
         case 'blur_state':
+            console.log('Received blur state update:', data);
             remoteWantsBlurOff = data.wantsBlurOff;
             updateBlurState();
             break;
@@ -481,6 +482,7 @@ function updateBlurState() {
         remoteVideo.style.filter = 'blur(10px)';
         removeBlurButton.textContent = 'Waiting for partner';
         removeBlurButton.disabled = true;
+        addMessageToChat('System', "Waiting for your partner to accept removing the blur.");
     } else if (!localWantsBlurOff && remoteWantsBlurOff) {
         // Partner wants to remove blur; ask for confirmation
         localVideo.style.filter = 'blur(10px)';
@@ -507,10 +509,14 @@ function toggleBlur() {
 
 function sendBlurState() {
     if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
+        const message = {
             type: 'blur_state',
             wantsBlurOff: localWantsBlurOff
-        }));
+        };
+        socket.send(JSON.stringify(message));
+        console.log('Sent blur state:', message);
+    } else {
+        console.error('WebSocket is not open. Cannot send blur state.');
     }
 }
 
@@ -689,22 +695,6 @@ function checkRelayConnection() {
                 }
             });
         });
-    }
-}
-
-// Add this function to check and log media streams
-function logMediaStreams() {
-    console.log('Local stream:', localStream);
-    console.log('Remote stream:', remoteVideo.srcObject);
-    
-    if (localStream) {
-        console.log('Local video tracks:', localStream.getVideoTracks());
-        console.log('Local audio tracks:', localStream.getAudioTracks());
-    }
-    
-    if (remoteVideo.srcObject) {
-        console.log('Remote video tracks:', remoteVideo.srcObject.getVideoTracks());
-        console.log('Remote audio tracks:', remoteVideo.srcObject.getAudioTracks());
     }
 }
 
