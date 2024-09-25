@@ -475,7 +475,9 @@ function updateBlurState() {
 }
 
 function toggleBlur() {
+    console.log('Toggle blur clicked. Current state:', localWantsBlurOff);
     localWantsBlurOff = !localWantsBlurOff;
+    console.log('New local blur state:', localWantsBlurOff);
     sendBlurState();
     updateBlurState();
 }
