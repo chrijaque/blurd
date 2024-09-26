@@ -173,6 +173,10 @@ function createPeerConnection() {
         pc.ontrack = handleTrack;
         pc.oniceconnectionstatechange = () => {
             console.log('ICE connection state changed:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                console.log('ICE connected, attempting to play remote video');
+                playRemoteVideo();
+            }
         };
         pc.onsignalingstatechange = () => {
             console.log('Signaling state changed:', pc.signalingState);
@@ -295,12 +299,12 @@ function updateUIConnectionState(state) {
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
-    peerConnection = createPeerConnection();
-    
-    if (!peerConnection) {
+    const pc = createPeerConnection();
+    if (!pc) {
         console.error('Failed to create peer connection');
         return;
     }
+    peerConnection = pc;  // Assign to the global variable after creation
     
     if (localStream) {
         localStream.getTracks().forEach(track => {
@@ -381,9 +385,10 @@ function handleICECandidate(event) {
 function handleTrack(event) {
     console.log('Handling track event:', event);
     if (event.streams && event.streams[0]) {
-        console.log('Remote stream received:', event.streams[0]);
+        const stream = event.streams[0];
+        console.log('Remote stream received:', stream);
         if (remoteVideo) {
-            remoteVideo.srcObject = event.streams[0];
+            remoteVideo.srcObject = stream;
             console.log('Set remote video source');
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
@@ -393,6 +398,15 @@ function handleTrack(event) {
                 }).catch(e => console.error('Error playing remote video:', e));
             };
             remoteVideo.onerror = (e) => console.error('Remote video error:', e);
+            
+            // Add this to check if the stream has video tracks
+            const videoTracks = stream.getVideoTracks();
+            console.log('Remote stream video tracks:', videoTracks);
+            if (videoTracks.length > 0) {
+                console.log('Remote video track settings:', videoTracks[0].getSettings());
+            } else {
+                console.warn('No video tracks found in the remote stream');
+            }
         } else {
             console.error('Remote video element not found');
         }
@@ -661,15 +675,25 @@ setInterval(checkRelayConnection, 30000);
 
 function checkRemoteVideoState() {
     if (remoteVideo) {
-        console.log('Remote video ready state:', remoteVideo.readyState);
-        console.log('Remote video network state:', remoteVideo.networkState);
-        console.log('Remote video paused:', remoteVideo.paused);
-        console.log('Remote video currentTime:', remoteVideo.currentTime);
-        console.log('Remote video duration:', remoteVideo.duration);
-        console.log('Remote video ended:', remoteVideo.ended);
-        console.log('Remote video muted:', remoteVideo.muted);
-        console.log('Remote video volume:', remoteVideo.volume);
-        console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+        console.log('Remote video state:',
+            'readyState:', remoteVideo.readyState,
+            'networkState:', remoteVideo.networkState,
+            'paused:', remoteVideo.paused,
+            'currentTime:', remoteVideo.currentTime,
+            'ended:', remoteVideo.ended,
+            'muted:', remoteVideo.muted,
+            'volume:', remoteVideo.volume,
+            'dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight
+        );
+        
+        if (remoteVideo.srcObject) {
+            const videoTracks = remoteVideo.srcObject.getVideoTracks();
+            console.log('Remote video tracks:', videoTracks);
+            if (videoTracks.length > 0) {
+                console.log('Remote video track enabled:', videoTracks[0].enabled);
+                console.log('Remote video track settings:', videoTracks[0].getSettings());
+            }
+        }
     } else {
         console.error('Remote video element not found');
     }
