@@ -88,36 +88,100 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Chat Initialization Functions
-function initializeChat() {
-    // Display the username if needed
-    const username = localStorage.getItem('username');
-    if (username) {
-        console.log(`Welcome, ${username}!`);
+async function initializeChat() {
+    console.log('Initializing chat');
+    try {
+        await initializeConnection();
+        console.log('Connection initialized successfully');
+        setupChat();
+        console.log('Chat setup complete');
+    } catch (error) {
+        console.error('Error in initializeChat:', error);
     }
-
-    // Set initial blur preference based on preview
-    localWantsBlurOff = !isBlurred;
-
-    // Initialize chat functionalities
-    setupWebSocket();       // WebSocket setup before peer connection
-    setupChat();
-    setupBlurEffect();
-    initializeConnection(); // Get local media stream
 }
 
 async function initializeConnection() {
+    console.log('Initializing connection');
     try {
-        console.log('Initializing connection');
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        console.log('Local stream set up successfully');
-        console.log('Local stream tracks:', localStream.getTracks().map(t => t.kind));
+        await checkMediaDevices();
         
-        // Start the WebSocket connection after getting the local stream
+        // Try to get video only
+        try {
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            console.log('Video stream acquired successfully');
+            handleStream(videoStream, 'video');
+        } catch (videoError) {
+            console.error('Error getting video stream:', videoError);
+        }
+        
+        // Try to get audio only
+        try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+            console.log('Audio stream acquired successfully');
+            handleStream(audioStream, 'audio');
+        } catch (audioError) {
+            console.error('Error getting audio stream:', audioError);
+        }
+        
+        // Start the WebSocket connection
         setupWebSocket();
     } catch (error) {
-        console.error('Error setting up local stream:', error);
+        console.error('Error in initializeConnection:', error);
+        handleMediaError(error);
     }
+}
+
+function handleStream(stream, type) {
+    if (type === 'video' || type === 'audio') {
+        if (!localStream) {
+            localStream = new MediaStream();
+        }
+        stream.getTracks().forEach(track => {
+            localStream.addTrack(track);
+        });
+        if (type === 'video' && localVideo) {
+            localVideo.srcObject = localStream;
+        }
+        console.log(`Added ${type} track to localStream`);
+    }
+}
+
+function checkMediaDevices() {
+    return navigator.mediaDevices.enumerateDevices()
+        .then(devices => {
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            const audioDevices = devices.filter(device => device.kind === 'audioinput');
+            
+            console.log('Available video devices:', videoDevices.length);
+            console.log('Available audio devices:', audioDevices.length);
+            
+            videoDevices.forEach(device => console.log('Video device:', device.label || 'Label not available'));
+            audioDevices.forEach(device => console.log('Audio device:', device.label || 'Label not available'));
+            
+            if (videoDevices.length === 0 && audioDevices.length === 0) {
+                throw new Error('No media devices found');
+            }
+        });
+}
+
+function handleMediaError(error) {
+    let errorMessage = '';
+    switch(error.name) {
+        case 'NotFoundError':
+            errorMessage = 'Camera or microphone not found. Please ensure your devices are connected and permissions are granted.';
+            break;
+        case 'NotAllowedError':
+            errorMessage = 'Permission to use camera and microphone was denied. Please allow access and try again.';
+            break;
+        case 'NotReadableError':
+            errorMessage = 'Your camera or microphone is already in use by another application.';
+            break;
+        default:
+            errorMessage = `An error occurred while trying to access your camera and microphone: ${error.message}`;
+    }
+    console.error(errorMessage);
+    alert(errorMessage);
+    // You might want to update the UI to reflect this error state
 }
 
 function createPeerConnection() {
