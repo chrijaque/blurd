@@ -167,32 +167,39 @@ function createPeerConnection() {
     console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
     
-    peerConnection.onicecandidate = handleICECandidate;
-    peerConnection.ontrack = handleTrack;
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'connected') {
-            console.log('ICE connected, forcing video play');
-            remoteVideo.play().catch(e => console.error('Error forcing video play:', e));
+    if (peerConnection) {
+        peerConnection.onicecandidate = handleICECandidate;
+        peerConnection.ontrack = handleTrack;
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'connected') {
+                console.log('ICE connected, forcing video play');
+                remoteVideo.play().catch(e => console.error('Error forcing video play:', e));
+            } else if (peerConnection.iceConnectionState === 'failed') {
+                console.log('ICE connection failed, attempting restart');
+                restartIce();
+            }
+        };
+        peerConnection.onsignalingstatechange = () => {
+            console.log('Signaling state:', peerConnection.signalingState);
+        };
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Connection state:', peerConnection.connectionState);
+        };
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                console.log('Adding local track to peer connection:', track.kind);
+                peerConnection.addTrack(track, localStream);
+            });
+        } else {
+            console.warn('No local stream available when creating peer connection');
         }
-    };
-    peerConnection.onsignalingstatechange = () => {
-        console.log('Signaling state:', peerConnection.signalingState);
-    };
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Connection state:', peerConnection.connectionState);
-    };
 
-    if (localStream) {
-        localStream.getTracks().forEach(track => {
-            console.log('Adding local track to peer connection:', track.kind);
-            peerConnection.addTrack(track, localStream);
-        });
+        console.log('Peer connection created');
     } else {
-        console.warn('No local stream available when creating peer connection');
+        console.error('Failed to create RTCPeerConnection');
     }
-
-    console.log('Peer connection created');
 }
 
 function setupWebSocket() {
@@ -295,7 +302,7 @@ function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
     createPeerConnection();
     
-    if (isOfferer) {
+    if (isOfferer && peerConnection) {
         console.log('Creating offer');
         peerConnection.createOffer()
             .then(offer => {
@@ -354,7 +361,7 @@ function handleICECandidate(event) {
 function handleTrack(event) {
     console.log('Received remote track:', event.track.kind);
     console.log('Remote streams:', event.streams);
-    if (!remoteVideo.srcObject) {
+    if (remoteVideo && !remoteVideo.srcObject) {
         remoteVideo.srcObject = event.streams[0];
         console.log('Set remote video source');
         event.streams[0].onaddtrack = (e) => console.log('New track added to remote stream:', e.track.kind);
@@ -366,12 +373,16 @@ function handleTrack(event) {
                 console.log('Remote video playing successfully');
             }).catch(e => console.error('Error playing remote video:', e));
         };
+    } else if (!remoteVideo) {
+        console.error('Remote video element not found');
     } else {
         console.log('Remote video source already set');
     }
-    remoteVideo.onplay = () => console.log('Remote video started playing');
-    remoteVideo.oncanplay = () => console.log('Remote video can play');
-    remoteVideo.onerror = (e) => console.error('Remote video error:', e);
+    if (remoteVideo) {
+        remoteVideo.onplay = () => console.log('Remote video started playing');
+        remoteVideo.oncanplay = () => console.log('Remote video can play');
+        remoteVideo.onerror = (e) => console.error('Remote video error:', e);
+    }
 }
 
 // Chat Functions
