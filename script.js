@@ -384,45 +384,53 @@ function handleDataChannelMessage(event) {
 
 // Chat Functions
 function setupChat() {
+    const chatBox = document.getElementById('chatBox');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
 
-    if (chatInput && sendButton && chatMessages) {
-        sendButton.addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendChatMessage();
-            }
-        });
-    } else {
+    if (!chatBox || !messageInput || !sendButton) {
         console.error('Some chat elements are missing');
+        return;
     }
 
-    toggleAudioButton.addEventListener('click', toggleAudio);
-    nextButton.addEventListener('click', handleNext);
-    disconnectButton.addEventListener('click', handleDisconnect);
+    // Event listener for sending message on Enter key press
+    messageInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    // Event listener for Send button
+    sendButton.addEventListener('click', sendMessage);
 }
 
-function sendChatMessage() {
-    const message = chatInput.value.trim();
-    if (message) {
-        sendMessage({ type: 'chat', message: message });
-        addMessageToChat('You', message);
-        chatInput.value = '';
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
+        console.error('Message input element with id "messageInput" not found');
+        return;
+    }
+    const message = messageInput.value.trim();
+    if (message && dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
+        displayMessage('You', message);
+        messageInput.value = ''; // Clear the input field
     } else {
-        console.log('Empty message, not sending');
+        console.log('Cannot send message: DataChannel not ready or message is empty');
     }
 }
 
-function addMessageToChat(sender, message) {
-    const messageElement = document.createElement('div');
-    
-    if (sender === 'System') {
-        messageElement.style.fontStyle = 'italic';
-        messageElement.style.color = '#888';
+function displayMessage(sender, message) {
+    const chatBox = document.getElementById('chatBox');
+    if (chatBox) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-box'; // Add the chat-box class for styling
+        messageElement.textContent = `${sender}: ${message}`;
+        chatBox.appendChild(messageElement);
+        chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
+    } else {
+        console.error('Chat box element with id "chatBox" not found.');
     }
-    
-    messageElement.textContent = `${sender === 'System' ? '' : sender + ': '}${message}`;
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function clearChat() {
