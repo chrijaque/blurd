@@ -176,6 +176,9 @@ function createPeerConnection() {
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
                 console.log('ICE connected, attempting to play remote video');
                 playRemoteVideo();
+            } else if (pc.iceConnectionState === 'failed') {
+                console.log('ICE connection failed, attempting restart');
+                restartIce();
             }
         };
         pc.onsignalingstatechange = () => {
@@ -282,6 +285,10 @@ function handleIncomingMessage(event) {
             console.log('Partner disconnected');
             handlePeerDisconnection();
             break;
+        case 'waiting':
+            console.log('Server indicates waiting for a peer.');
+            updateUIConnectionState('Waiting for a peer...');
+            break;
         default:
             console.warn('Unknown message type:', data.type);
     }
@@ -337,6 +344,15 @@ function handleOfferOrAnswer(description, isOffer) {
             .then(() => {
                 console.log('Set remote description successfully');
                 if (isOffer) {
+                    // Add local tracks here
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => {
+                            console.log('Adding local track to peer connection:', track.kind);
+                            peerConnection.addTrack(track, localStream);
+                        });
+                    } else {
+                        console.warn('No local stream available when handling offer');
+                    }
                     console.log('Creating answer');
                     return peerConnection.createAnswer();
                 }
@@ -634,15 +650,6 @@ function restartIce() {
             .catch(error => console.error('Error during ICE restart:', error));
     }
 }
-
-// Call this function if the ICE connection state becomes 'failed'
-peerConnection.oniceconnectionstatechange = () => {
-    console.log('ICE connection state:', peerConnection.iceConnectionState);
-    if (peerConnection.iceConnectionState === 'failed') {
-        console.log('ICE connection failed, attempting restart');
-        restartIce();
-    }
-};
 
 function checkConnectionStatus() {
     if (peerConnection) {
