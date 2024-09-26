@@ -112,6 +112,9 @@ async function initializeConnection() {
         localVideo.srcObject = localStream;
         console.log('Local stream set up successfully');
         console.log('Local stream tracks:', localStream.getTracks().map(t => t.kind));
+        
+        // Start the WebSocket connection after getting the local stream
+        setupWebSocket();
     } catch (error) {
         console.error('Error setting up local stream:', error);
     }
@@ -145,6 +148,7 @@ function createPeerConnection() {
 
     // Add local tracks to the peer connection
     localStream.getTracks().forEach(track => {
+        console.log('Adding local track to peer connection:', track.kind);
         peerConnection.addTrack(track, localStream);
     });
 
@@ -152,7 +156,7 @@ function createPeerConnection() {
     peerConnection.ontrack = handleTrack;
 
     function handleTrack(event) {
-        console.log('Received remote track:', event.track);
+        console.log('Received remote track:', event.track.kind);
         if (remoteVideo.srcObject !== event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
             console.log('Set remote video source');
@@ -283,60 +287,36 @@ function sendMessage(message) {
     }
 }
 
-function handleIncomingMessage(message) {
-    console.log('Received message:', data);
+function handleIncomingMessage(event) {
+    try {
+        const data = JSON.parse(event.data);
+        console.log('Received message:', data);
 
-    if (data.type === 'pong') {
-        // Connection is alive
-        return;
-    }
-
-    switch (data.type) {
-        case 'waiting':
-            console.log('Waiting for peer...');
-            isConnectedToPeer = false;
-            if (statusMessage) {
-                statusMessage.textContent = 'Waiting for a peer...';
-            }
-            break;
-        case 'paired':
-            console.log('Paired with a new peer');
-            isConnectedToPeer = true;
-            if (statusMessage) {
-                statusMessage.textContent = 'Connected to a peer';
-            }
-            polite = !data.isOfferer; // Corrected assignment
-            startConnection(data.isOfferer);
-            clearChat();
-            resetBlurState();
-            break;
-        case 'partnerDisconnected':
-            console.log('Partner disconnected');
-            if (statusMessage) {
-                statusMessage.textContent = 'Partner disconnected';
-            }
-            handlePartnerDisconnect();
-            break;
-        case 'offer':
-            console.log('Received offer');
-            handleOfferOrAnswer(new RTCSessionDescription(data.offer), true);
-            break;
-        case 'answer':
-            console.log('Received answer');
-            handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
-            break;
+        switch (data.type) {
+            case 'offer':
+                console.log('Received offer');
+                handleOfferOrAnswer(data.offer, true);
+                break;
+            case 'answer':
+                console.log('Received answer');
+                handleOfferOrAnswer(data.answer, false);
+                break;
             case 'candidate':
                 console.log('Received ICE candidate');
-            handleNewICECandidate(message.candidate);
-            break;
-        case 'chat':
-            addMessageToChat(data.username, data.message);
-            break;
-        case 'audio-state':
-            addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
-            break;
-        default:
-            console.log('Unknown message type:', data.type);
+                handleNewICECandidate(data.candidate);
+                break;
+            case 'chat':
+                console.log('Received chat message');
+                addMessageToChat('Partner', data.message);
+                break;
+            case 'audio-state':
+                addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
+                break;
+            default:
+                console.log('Unknown message type:', data.type);
+        }
+    } catch (error) {
+        console.error('Error handling incoming message:', error);
     }
 }
 
