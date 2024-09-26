@@ -676,7 +676,31 @@ function logMediaStreams() {
 }
 
 function handleChatMessage(message) {
-    // Implement chat message handling logic
     console.log('Received chat message:', message);
-    // Add your implementation here, e.g., updating the UI with the new message
+    const chatBox = document.getElementById('chatBox');
+    const messageElement = document.createElement('div');
+    messageElement.className = 'chat-box'; // Add the chat-box class
+    messageElement.textContent = `Partner: ${message}`;
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
+}
+
+// Update the sendMessage function to use the correct id and class
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput'); // Assuming this is the correct id
+    const message = messageInput.value.trim();
+    if (message && dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
+        displayMessage('You', message); // Display your own message
+        messageInput.value = ''; // Clear the input field
+    }
+}
+
+function displayMessage(sender, message) {
+    const chatBox = document.getElementById('chatBox');
+    const messageElement = document.createElement('div');
+    messageElement.className = 'chat-box'; // Add the chat-box class
+    messageElement.textContent = `${sender}: ${message}`;
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
 }
