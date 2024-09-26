@@ -167,19 +167,13 @@ function createPeerConnection() {
     console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
     
-    peerConnection.ontrack = (event) => {
-        console.log('ontrack event:', event);
-        handleTrack(event);
-    };
-    
+    peerConnection.onicecandidate = handleICECandidate;
+    peerConnection.ontrack = handleTrack;
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'connected') {
-            console.log('ICE connected, checking remote tracks');
-            const receivers = peerConnection.getReceivers();
-            receivers.forEach(receiver => {
-                console.log('Receiver track:', receiver.track.kind);
-            });
+            console.log('ICE connected, forcing video play');
+            remoteVideo.play().catch(e => console.error('Error forcing video play:', e));
         }
     };
     peerConnection.onsignalingstatechange = () => {
@@ -368,7 +362,9 @@ function handleTrack(event) {
         remoteVideo.onloadedmetadata = () => {
             console.log('Remote video metadata loaded');
             console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-            remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
+            remoteVideo.play().then(() => {
+                console.log('Remote video playing successfully');
+            }).catch(e => console.error('Error playing remote video:', e));
         };
     } else {
         console.log('Remote video source already set');
@@ -618,6 +614,15 @@ function restartIce() {
     }
 }
 
+// Call this function if the ICE connection state becomes 'failed'
+peerConnection.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', peerConnection.iceConnectionState);
+    if (peerConnection.iceConnectionState === 'failed') {
+        console.log('ICE connection failed, attempting restart');
+        restartIce();
+    }
+};
+
 function checkConnectionStatus() {
     if (peerConnection) {
         console.log('Connection status:', peerConnection.connectionState);
@@ -672,4 +677,18 @@ function tryPlayRemoteVideo() {
 
 // Call this function a few seconds after the peer connection is established
 setTimeout(tryPlayRemoteVideo, 5000);
+
+function checkVideoStatus() {
+    console.log('Video ready state:', remoteVideo.readyState);
+    console.log('Video network state:', remoteVideo.networkState);
+    console.log('Video paused:', remoteVideo.paused);
+    console.log('Video currentTime:', remoteVideo.currentTime);
+    console.log('Video duration:', remoteVideo.duration);
+    console.log('Video ended:', remoteVideo.ended);
+    console.log('Video muted:', remoteVideo.muted);
+    console.log('Video volume:', remoteVideo.volume);
+    console.log('Video width x height:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+}
+
+setInterval(checkVideoStatus, 5000);
 
