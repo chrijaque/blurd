@@ -224,7 +224,10 @@ function createPeerConnection() {
         if (remoteVideo.srcObject !== event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
             console.log('Set remote video source');
+            event.streams[0].onaddtrack = () => console.log('New track added to remote stream');
         }
+        remoteVideo.onloadedmetadata = () => console.log('Remote video metadata loaded');
+        remoteVideo.onplay = () => console.log('Remote video started playing');
     }
 
     peerConnection = new RTCPeerConnection(configuration);
@@ -298,38 +301,22 @@ function createPeerConnection() {
 }
 
 function setupWebSocket() {
-    socket = new WebSocket('wss://blurd.adaptable.app');
-
+    socket = new WebSocket('https://blurd.adaptable.app');
+    
     socket.onopen = () => {
         console.log('WebSocket connected');
-        socketReady = true;
-        reconnectAttempts = 0;
-        intentionalDisconnect = false; // Reset the flag on successful connection
-
-        sendMessage({ type: 'ready' });
-        // Start the heartbeat interval after the socket is open
-        startHeartbeat();
+        // Send any necessary initialization messages
     };
-
-    socket.onclose = () => {
-        console.log('WebSocket disconnected');
-        socketReady = false;
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
-
-        // Attempt to reconnect only if the disconnection was unintentional
-        if (!intentionalDisconnect && reconnectAttempts < maxReconnectAttempts) {
-            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
-            reconnectAttempts++;
-            setTimeout(setupWebSocket, reconnectInterval);
-        } else {
-            console.error('Max reconnect attempts reached or intentional disconnect. Please refresh the page.');
-        }
+    
+    socket.onclose = (event) => {
+        console.log('WebSocket disconnected, attempting to reconnect...');
+        setTimeout(setupWebSocket, 5000); // Attempt to reconnect after 5 seconds
     };
-
+    
     socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
-
+    
     socket.onmessage = handleIncomingMessage;
 }
 
@@ -353,88 +340,78 @@ function sendMessage(message) {
 }
 
 function handleIncomingMessage(event) {
-    try {
-        const data = JSON.parse(event.data);
-        console.log('Received message:', data);
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
 
-        switch (data.type) {
-            case 'offer':
-                console.log('Received offer');
-                handleOfferOrAnswer(data.offer, true);
-                break;
-            case 'answer':
-                console.log('Received answer');
-                handleOfferOrAnswer(data.answer, false);
-                break;
-            case 'candidate':
-                console.log('Received ICE candidate');
-                handleNewICECandidate(data.candidate);
-                break;
-            case 'chat':
-                console.log('Received chat message');
-                addMessageToChat('Partner', data.message);
-                break;
-            case 'audio-state':
-                addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
-                break;
-            default:
-                console.log('Unknown message type:', data.type);
-        }
-    } catch (error) {
-        console.error('Error handling incoming message:', error);
+    switch (data.type) {
+        case 'waiting':
+            updateUIConnectionState('Waiting for peer...');
+            break;
+        case 'paired':
+            updateUIConnectionState('Connected');
+            startConnection(data.isOfferer);
+            break;
+        case 'offer':
+            handleOfferOrAnswer(data.offer, true);
+            break;
+        case 'answer':
+            handleOfferOrAnswer(data.answer, false);
+            break;
+        case 'candidate':
+            handleNewICECandidate(data.candidate);
+            break;
+        case 'chat':
+            addMessageToChat('Partner', data.message);
+            break;
+        case 'pong':
+            // Handle pong (if needed)
+            break;
+        case 'partnerDisconnected':
+            handlePartnerDisconnect();
+            break;
+        default:
+            console.warn('Unknown message type:', data.type);
+    }
+}
+
+function updateUIConnectionState(state) {
+    const stateElement = document.getElementById('connectionState');
+    if (stateElement) {
+        stateElement.textContent = state;
     }
 }
 
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
-    console.log('Starting connection, isOfferer:', isOfferer);
-    if (peerConnection) {
-        console.log('Closing existing peer connection');
-        peerConnection.close();
-    }
     createPeerConnection();
-    
     if (isOfferer) {
-        console.log('Creating offer');
         peerConnection.createOffer()
-            .then(offer => {
-                console.log('Setting local description');
-                return peerConnection.setLocalDescription(offer);
-            })
+            .then(offer => peerConnection.setLocalDescription(offer))
             .then(() => {
-                console.log('Sending offer');
                 sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
     }
 }
 
-async function handleOfferOrAnswer(description, isOffer) {
-    const offerCollision = isOffer && (makingOffer || peerConnection.signalingState !== "stable");
-    ignoreOffer = !polite && offerCollision;
-    if (ignoreOffer) {
-        console.log('Ignoring offer due to collision');
-        return;
-    }
-
-    try {
-        await peerConnection.setRemoteDescription(description);
-        if (isOffer) {
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        }
-
-        // Add queued ICE candidates after setting remote description
-        while (iceCandidatesQueue.length) {
-            const candidate = iceCandidatesQueue.shift();
-            await peerConnection.addIceCandidate(candidate).catch(e => {
-                console.error('Error adding queued ice candidate', e);
-            });
-        }
-    } catch (err) {
-        console.error('Error handling offer or answer:', err);
-    }
+function handleOfferOrAnswer(description, isOffer) {
+    peerConnection.setRemoteDescription(new RTCSessionDescription(description))
+        .then(() => {
+            if (isOffer) {
+                return peerConnection.createAnswer();
+            }
+        })
+        .then(answer => {
+            if (answer) {
+                return peerConnection.setLocalDescription(answer);
+            }
+        })
+        .then(() => {
+            if (isOffer) {
+                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+            }
+        })
+        .catch(error => console.error('Error handling offer/answer:', error));
 }
 
 function handleIceCandidate(candidate) {
