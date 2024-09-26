@@ -190,7 +190,7 @@ function setupWebSocket() {
 
     ws.onopen = () => {
         console.log('WebSocket connected');
-        // Don't call sendMessage here, just send the 'ready' message
+        // Only send the 'ready' message
         sendToServer({ type: 'ready', username: username });
     };
 
@@ -682,16 +682,18 @@ function handleChatMessage(message) {
 
 // Update the sendMessage function to use the correct id and class
 function sendMessage() {
-    const chatInput = document.getElementById('chatInput');
-    if (!chatInput) {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
         console.error('Message input element not found');
         return;
     }
-    const message = chatInput.value.trim();
+    const message = messageInput.value.trim();
     if (message && dataChannel && dataChannel.readyState === 'open') {
         dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
-        displayMessage('You', message); // Display your own message
-        chatInput.value = ''; // Clear the input field
+        displayMessage('You', message);
+        messageInput.value = '';
+    } else {
+        console.log('Cannot send message: DataChannel not ready or message empty');
     }
 }
 
@@ -703,3 +705,71 @@ function displayMessage(sender, message) {
     chatBox.appendChild(messageElement);
     chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
 }
+
+// Add this function at the top of your script
+function checkRelayConnection() {
+    console.log('Checking relay connection...');
+    // Implement your relay connection check logic here
+}
+
+// Update the WebSocket onopen handler
+ws.onopen = () => {
+    console.log('WebSocket connected');
+    // Only send the 'ready' message
+    sendToServer({ type: 'ready', username: username });
+};
+
+// Modify the sendMessage function to be more robust
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
+        console.error('Message input element not found');
+        return;
+    }
+    const message = messageInput.value.trim();
+    if (message && dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
+        displayMessage('You', message);
+        messageInput.value = '';
+    } else {
+        console.log('Cannot send message: DataChannel not ready or message empty');
+    }
+}
+
+// Ensure this event listener is set up when the DOM is fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    } else {
+        console.error('Message input element not found on DOMContentLoaded');
+    }
+});
+
+// Update the peerConnection setup
+function setupPeerConnection() {
+    peerConnection = new RTCPeerConnection(configuration);
+    
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            sendToServer({
+                type: 'ice-candidate',
+                candidate: event.candidate
+            });
+        }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
+        checkRelayConnection();
+    };
+
+    // ... other peerConnection setup ...
+}
+
+// Call this function when appropriate (e.g., when paired with a peer)
+setupPeerConnection();
