@@ -143,124 +143,56 @@ function handleMediaError(error) {
     // You might want to update the UI to reflect this error state
 }
 
+const configuration = {
+    iceServers: [
+        {
+            urls: ["stun:fr-turn1.xirsys.com"]
+        },
+        {
+            username: "NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=",
+            credential: "d11f86be-714e-11ef-8726-0242ac120004",
+            urls: [
+                "turn:fr-turn1.xirsys.com:80?transport=udp",
+                "turn:fr-turn1.xirsys.com:3478?transport=udp",
+                "turn:fr-turn1.xirsys.com:80?transport=tcp",
+                "turn:fr-turn1.xirsys.com:3478?transport=tcp",
+                "turns:fr-turn1.xirsys.com:443?transport=tcp",
+                "turns:fr-turn1.xirsys.com:5349?transport=tcp"
+            ]
+        }
+    ]
+};
+
 function createPeerConnection() {
     console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
     
     peerConnection.onicecandidate = handleICECandidate;
     peerConnection.ontrack = handleTrack;
-    peerConnection.oniceconnectionstatechange = handleICEConnectionStateChange;
-    const configuration = {
-        iceServers: [
-            { urls: 'stun:fr-turn1.xirsys.com' },
-            {
-                urls: [
-                    'turn:fr-turn1.xirsys.com:80?transport=udp',
-                    'turn:fr-turn1.xirsys.com:3478?transport=udp',
-                    'turn:fr-turn1.xirsys.com:80?transport=tcp',
-                    'turn:fr-turn1.xirsys.com:3478?transport=tcp',
-                    'turns:fr-turn1.xirsys.com:443?transport=tcp',
-                    'turns:fr-turn1.xirsys.com:5349?transport=tcp'
-                ],
-                username: 'NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=',
-                credential: 'd11f86be-714e-11ef-8726-0242ac120004'
-            }
-        ],
-        iceCandidatePoolSize: 10,
-    };
-
-    // Add local tracks to the peer connection
-    localStream.getTracks().forEach(track => {
-        console.log('Adding local track to peer connection:', track.kind);
-        peerConnection.addTrack(track, localStream);
-    });
-
-    // Handle incoming tracks
-    peerConnection.ontrack = handleTrack;
-
-    function handleTrack(event) {
-        console.log('Received remote track:', event.track.kind);
-        if (remoteVideo.srcObject !== event.streams[0]) {
-            remoteVideo.srcObject = event.streams[0];
-            console.log('Set remote video source');
-            event.streams[0].onaddtrack = () => console.log('New track added to remote stream');
-        }
-        remoteVideo.onloadedmetadata = () => console.log('Remote video metadata loaded');
-        remoteVideo.onplay = () => console.log('Remote video started playing');
-    }
-
-    peerConnection = new RTCPeerConnection(configuration);
-
-    peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-            sendMessage({ type: 'ice-candidate', candidate: event.candidate });
-        }
-    };
-
-    peerConnection.ontrack = event => {
-        console.log('Received remote track', event);
-        if (event.track.kind === 'video') {
-            const remoteVideo = document.getElementById('remoteVideo');
-            if (remoteVideo.srcObject !== event.streams[0]) {
-                remoteVideo.srcObject = event.streams[0];
-                console.log('Setting remote video stream');
-            }
-        }
-    };
-
-    peerConnection.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        } catch (err) {
-            console.error('Error during negotiationneeded event:', err);
-        } finally {
-            makingOffer = false;
-        }
-    };
-
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'failed') {
-            console.log('ICE connection failed, restarting');
-            restartIce();
-        } else if (peerConnection.iceConnectionState === 'connected') {
-            console.log('ICE connection established');
-            checkRelayConnection();
-        } else if (peerConnection.iceConnectionState === 'disconnected') {
-            console.log('ICE connection disconnected, attempting to reconnect');
-            setTimeout(restartIce, 2000);
-        }
     };
-
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Connection state change:', peerConnection.connectionState);
-    };
-
     peerConnection.onicegatheringstatechange = () => {
         console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
+    peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state:', peerConnection.signalingState);
+    };
 
-    // Set up data channel based on role
-    if (!polite) {
-        // Offerer creates the data channel
-        dataChannel = peerConnection.createDataChannel('chat');
-        setupDataChannel();
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            console.log('Adding local track to peer connection:', track.kind);
+            peerConnection.addTrack(track, localStream);
+        });
     } else {
-        // Answerer listens for data channel
-        peerConnection.ondatachannel = event => {
-            dataChannel = event.channel;
-            setupDataChannel();
-        };
+        console.warn('No local stream available when creating peer connection');
     }
 
     console.log('Peer connection created');
 }
 
 function setupWebSocket() {
-    socket = new WebSocket('https://blurd.adaptable.app');
+    socket = new WebSocket('wss://blurd.adaptable.app');
     
     socket.onopen = () => {
         console.log('WebSocket connected');
@@ -315,16 +247,20 @@ function handleIncomingMessage(event) {
             updateUIConnectionState('Waiting for peer...');
             break;
         case 'paired':
+            console.log('Paired with peer, isOfferer:', data.isOfferer);
             updateUIConnectionState('Connected to peer');
             startConnection(data.isOfferer);
             break;
         case 'offer':
+            console.log('Received offer');
             handleOfferOrAnswer(data.offer, true);
             break;
         case 'answer':
+            console.log('Received answer');
             handleOfferOrAnswer(data.answer, false);
             break;
         case 'candidate':
+            console.log('Received ICE candidate');
             handleNewICECandidate(data.candidate);
             break;
         case 'chat':
@@ -345,6 +281,8 @@ function updateUIConnectionState(state) {
     const stateElement = document.getElementById('connectionState');
     if (stateElement) {
         stateElement.textContent = state;
+    } else {
+        console.warn('Connection state element not found');
     }
 }
 
@@ -354,85 +292,57 @@ function startConnection(isOfferer) {
     createPeerConnection();
     
     if (isOfferer) {
-        createAndSendOffer();
+        console.log('Creating offer');
+        peerConnection.createOffer()
+            .then(offer => {
+                console.log('Setting local description');
+                return peerConnection.setLocalDescription(offer);
+            })
+            .then(() => {
+                console.log('Sending offer');
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => console.error('Error creating offer:', error));
     }
 }
 
-function createPeerConnection() {
-    peerConnection = new RTCPeerConnection(configuration);
-    
-    peerConnection.onicecandidate = handleICECandidate;
-    peerConnection.ontrack = handleTrack;
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-    };
+async function handleOfferOrAnswer(description, isOffer) {
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(description));
+        console.log('Set remote description');
 
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    console.log('Peer connection created');
+        if (isOffer) {
+            console.log('Creating answer');
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            console.log('Set local description (answer)');
+            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+        }
+    } catch (error) {
+        console.error('Error handling offer/answer:', error);
+    }
 }
 
-function createAndSendOffer() {
-    peerConnection.createOffer()
-        .then(offer => peerConnection.setLocalDescription(offer))
-        .then(() => {
-            console.log('Sending offer');
-            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-        })
-        .catch(error => console.error('Error creating offer:', error));
+function handleNewICECandidate(candidate) {
+    console.log('Adding received ICE candidate');
+    peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+        .catch(error => console.error('Error adding received ICE candidate', error));
 }
 
-function handleOfferOrAnswer(description, isOffer) {
-    peerConnection.setRemoteDescription(new RTCSessionDescription(description))
-        .then(() => {
-            if (isOffer) {
-                return peerConnection.createAnswer();
-            }
-        })
-        .then(answer => {
-            if (answer) {
-                return peerConnection.setLocalDescription(answer);
-            }
-        })
-        .then(() => {
-            if (isOffer) {
-                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-            }
-        })
-        .catch(error => console.error('Error handling offer/answer:', error));
-}
-
-function handleIceCandidate(event) {
-    console.log('Handling ICE candidate:', JSON.stringify(event.candidate));
-    if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-        peerConnection.addIceCandidate(event.candidate)
-            .then(() => console.log('ICE candidate added successfully'))
-            .catch(e => console.error('Error adding received ice candidate', e));
+function handleICECandidate(event) {
+    if (event.candidate) {
+        console.log('New ICE candidate:', event.candidate.type);
+        sendMessage({ type: 'candidate', candidate: event.candidate });
     } else {
-        console.log('Queueing ICE candidate');
-        iceCandidatesQueue.push(event.candidate);
+        console.log('All ICE candidates have been sent');
     }
 }
 
-function setupDataChannel() {
-    if (peerConnection.createDataChannel) {
-        dataChannel = peerConnection.createDataChannel('chat');
-        dataChannel.onopen = () => console.log('Data channel opened');
-        dataChannel.onclose = () => console.log('Data channel closed');
-        dataChannel.onmessage = handleDataChannelMessage;
-    } else {
-        console.error('Data channels are not supported');
-    }
-}
-
-function handleDataChannelMessage(event) {
-    const message = JSON.parse(event.data);
-    console.log('Received data channel message:', message);
-    if (message.type === 'blurState') {
-        remoteWantsBlurOff = message.blurState;
-        updateBlurState();
+function handleTrack(event) {
+    console.log('Received remote track:', event.track.kind);
+    if (remoteVideo.srcObject !== event.streams[0]) {
+        remoteVideo.srcObject = event.streams[0];
+        console.log('Set remote video source');
     }
 }
 
