@@ -172,12 +172,9 @@ function createPeerConnection() {
         peerConnection.ontrack = handleTrack;
         peerConnection.oniceconnectionstatechange = () => {
             console.log('ICE connection state:', peerConnection.iceConnectionState);
-            if (peerConnection.iceConnectionState === 'connected') {
+            if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
                 console.log('ICE connected, forcing video play');
-                remoteVideo.play().catch(e => console.error('Error forcing video play:', e));
-            } else if (peerConnection.iceConnectionState === 'failed') {
-                console.log('ICE connection failed, attempting restart');
-                restartIce();
+                forcePlayRemoteVideo();
             }
         };
         peerConnection.onsignalingstatechange = () => {
@@ -361,6 +358,9 @@ function handleICECandidate(event) {
 function handleTrack(event) {
     console.log('Received remote track:', event.track.kind);
     console.log('Remote streams:', event.streams);
+    console.log('Remote track settings:', event.track.getSettings());
+    console.log('Remote track constraints:', event.track.getConstraints());
+    
     if (remoteVideo && !remoteVideo.srcObject) {
         remoteVideo.srcObject = event.streams[0];
         console.log('Set remote video source');
@@ -378,6 +378,7 @@ function handleTrack(event) {
     } else {
         console.log('Remote video source already set');
     }
+    
     if (remoteVideo) {
         remoteVideo.onplay = () => console.log('Remote video started playing');
         remoteVideo.oncanplay = () => console.log('Remote video can play');
@@ -664,14 +665,32 @@ setInterval(checkConnectionStatus, 30000);
 setInterval(checkRelayConnection, 30000);
 
 function checkRemoteVideoState() {
-    console.log('Remote video ready state:', remoteVideo.readyState);
-    console.log('Remote video paused:', remoteVideo.paused);
-    console.log('Remote video current time:', remoteVideo.currentTime);
-    console.log('Remote video src:', remoteVideo.src);
-    console.log('Remote video srcObject:', remoteVideo.srcObject);
+    if (remoteVideo) {
+        console.log('Remote video ready state:', remoteVideo.readyState);
+        console.log('Remote video network state:', remoteVideo.networkState);
+        console.log('Remote video paused:', remoteVideo.paused);
+        console.log('Remote video currentTime:', remoteVideo.currentTime);
+        console.log('Remote video duration:', remoteVideo.duration);
+        console.log('Remote video ended:', remoteVideo.ended);
+        console.log('Remote video muted:', remoteVideo.muted);
+        console.log('Remote video volume:', remoteVideo.volume);
+        console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+        
+        if (remoteVideo.srcObject) {
+            const videoTracks = remoteVideo.srcObject.getVideoTracks();
+            console.log('Remote video tracks:', videoTracks.length);
+            videoTracks.forEach((track, index) => {
+                console.log(`Video track ${index}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted);
+            });
+        } else {
+            console.log('No srcObject set on remote video');
+        }
+    } else {
+        console.error('Remote video element not found');
+    }
 }
 
-// Call this function every 5 seconds after the peer connection is established
+// Call this function every 5 seconds
 setInterval(checkRemoteVideoState, 5000);
 
 function tryPlayRemoteVideo() {
