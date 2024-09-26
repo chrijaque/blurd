@@ -167,16 +167,18 @@ function createPeerConnection() {
     console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
     
-    peerConnection.onicecandidate = handleICECandidate;
-    peerConnection.ontrack = handleTrack;
+    peerConnection.ontrack = (event) => {
+        console.log('ontrack event:', event);
+        handleTrack(event);
+    };
+    
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
         if (peerConnection.iceConnectionState === 'connected') {
             console.log('ICE connected, checking remote tracks');
-            const remoteStreams = peerConnection.getRemoteStreams();
-            console.log('Remote streams:', remoteStreams);
-            remoteStreams.forEach(stream => {
-                console.log('Remote stream tracks:', stream.getTracks().map(t => t.kind));
+            const receivers = peerConnection.getReceivers();
+            receivers.forEach(receiver => {
+                console.log('Receiver track:', receiver.track.kind);
             });
         }
     };
@@ -358,15 +360,19 @@ function handleICECandidate(event) {
 function handleTrack(event) {
     console.log('Received remote track:', event.track.kind);
     console.log('Remote streams:', event.streams);
-    if (remoteVideo.srcObject !== event.streams[0]) {
+    if (!remoteVideo.srcObject) {
         remoteVideo.srcObject = event.streams[0];
         console.log('Set remote video source');
         event.streams[0].onaddtrack = (e) => console.log('New track added to remote stream:', e.track.kind);
+        
+        remoteVideo.onloadedmetadata = () => {
+            console.log('Remote video metadata loaded');
+            console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+            remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
+        };
+    } else {
+        console.log('Remote video source already set');
     }
-    remoteVideo.onloadedmetadata = () => {
-        console.log('Remote video metadata loaded');
-        console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-    };
     remoteVideo.onplay = () => console.log('Remote video started playing');
     remoteVideo.oncanplay = () => console.log('Remote video can play');
     remoteVideo.onerror = (e) => console.error('Remote video error:', e);
