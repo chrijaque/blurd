@@ -19,7 +19,7 @@ const chatMessages = document.getElementById('chatMessages');
 
 // Variables
 let localStream;
-let peerConnection;
+let peerConnection = null;
 let isOfferer = false;
 let iceCandidatesQueue = [];
 let makingOffer = false;
@@ -200,6 +200,7 @@ function createPeerConnection() {
             peerConnectionInitialized = true;
         } catch (error) {
             console.error('Error creating peer connection:', error);
+            peerConnection = null;
         }
     } else {
         console.warn('Peer connection already exists');
@@ -269,11 +270,20 @@ function handleIncomingMessage(event) {
             break;
         case 'offer':
             console.log('Received offer');
-            handleOfferOrAnswer(data.offer, true);
+            const pc = createPeerConnection();
+            if (pc) {
+                handleOfferOrAnswer(data.offer, true);
+            } else {
+                console.error('Failed to create peer connection for offer');
+            }
             break;
         case 'answer':
             console.log('Received answer');
-            handleOfferOrAnswer(data.answer, false);
+            if (peerConnection) {
+                handleOfferOrAnswer(data.answer, false);
+            } else {
+                console.error('Received answer but no peer connection exists');
+            }
             break;
         case 'candidate':
             console.log('Received ICE candidate');
@@ -305,22 +315,25 @@ function updateUIConnectionState(state) {
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
-    if (peerConnectionInitialized && peerConnection) {
-        if (isOfferer) {
-            console.log('Creating offer');
-            peerConnection.createOffer()
-                .then(offer => {
-                    console.log('Setting local description (offer)');
-                    return peerConnection.setLocalDescription(offer);
-                })
-                .then(() => {
-                    console.log('Sending offer');
-                    sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-                })
-                .catch(error => console.error('Error creating offer:', error));
-        }
-    } else {
-        console.error('Peer connection not initialized');
+    const pc = createPeerConnection();
+    
+    if (!pc) {
+        console.error('Failed to create peer connection');
+        return;
+    }
+    
+    if (isOfferer) {
+        console.log('Creating offer');
+        pc.createOffer()
+            .then(offer => {
+                console.log('Setting local description (offer)');
+                return pc.setLocalDescription(offer);
+            })
+            .then(() => {
+                console.log('Sending offer');
+                sendMessage({ type: 'offer', offer: pc.localDescription });
+            })
+            .catch(error => console.error('Error creating offer:', error));
     }
 }
 
@@ -382,7 +395,9 @@ function handleTrack(event) {
             console.log('Set remote video source');
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
-                remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
+                remoteVideo.play().then(() => {
+                    console.log('Remote video playing successfully');
+                }).catch(e => console.error('Error playing remote video:', e));
             };
         } else {
             console.error('Remote video element not found');
