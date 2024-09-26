@@ -673,13 +673,6 @@ function forceRelayICECandidates() {
     }
 }
 
-function checkRelayConnection() {
-    if (peerConnection) {
-        peerConnection.getStats(null).then(stats => {
-        });
-    }
-}
-
-// Call this function periodically
+// Call these functions periodically
 setInterval(checkConnectionStatus, 30000);
 setInterval(checkRelayConnection, 30000);
