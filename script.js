@@ -161,13 +161,8 @@ function createPeerConnection() {
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-        if (peerConnection.iceConnectionState === 'failed') {
-            restartIce();
-        } else if (peerConnection.iceConnectionState === 'connected') {
-            checkRelayConnection();
-        } else if (peerConnection.iceConnectionState === 'disconnected') {
-            setTimeout(restartIce, 2000);
-        }
+        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
+        checkRelayConnection();
     };
 
     peerConnection.onconnectionstatechange = () => {
@@ -195,8 +190,8 @@ function setupWebSocket() {
 
     ws.onopen = () => {
         console.log('WebSocket connected');
-        // Send a ready message when connected
-        sendMessage({ type: 'ready', username: localStorage.getItem('username') });
+        // Don't call sendMessage here, just send the 'ready' message
+        sendToServer({ type: 'ready', username: username });
     };
 
     ws.onmessage = handleWebSocketMessage;
@@ -687,12 +682,16 @@ function handleChatMessage(message) {
 
 // Update the sendMessage function to use the correct id and class
 function sendMessage() {
-    const messageInput = document.getElementById('messageInput'); // Assuming this is the correct id
-    const message = messageInput.value.trim();
+    const chatInput = document.getElementById('chatInput');
+    if (!chatInput) {
+        console.error('Message input element not found');
+        return;
+    }
+    const message = chatInput.value.trim();
     if (message && dataChannel && dataChannel.readyState === 'open') {
         dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
         displayMessage('You', message); // Display your own message
-        messageInput.value = ''; // Clear the input field
+        chatInput.value = ''; // Clear the input field
     }
 }
 
