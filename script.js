@@ -186,23 +186,53 @@ function createPeerConnection() {
 }
 
 function setupWebSocket() {
-    ws = new WebSocket('wss://blurd.adaptable.app');
+    const ws = new WebSocket('wss://blurd.adaptable.app');
 
     ws.onopen = () => {
         console.log('WebSocket connected');
-        // Only send the 'ready' message
-        sendToServer({ type: 'ready', username: username });
+        sendToServer({ type: 'ready', username: username }); // Ensure 'username' is defined
     };
 
-    ws.onmessage = handleWebSocketMessage;
+    ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        console.log('Received WebSocket message:', message);
 
-    ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setTimeout(setupWebSocket, 3000);
+        switch (message.type) {
+            case 'waiting':
+                console.log('Waiting for peer...');
+                break;
+            case 'paired':
+                console.log('Paired with a new peer');
+                setupPeerConnection();
+                if (message.isOfferer) {
+                    createOffer();
+                }
+                break;
+            case 'offer':
+                handleOffer(message.offer);
+                break;
+            case 'answer':
+                handleAnswer(message.answer);
+                break;
+            case 'ice-candidate':
+                handleNewICECandidate(message.candidate);
+                break;
+            case 'chat':
+                handleChatMessage(message.message);
+                break;
+            // ... other cases ...
+            default:
+                console.warn('Unknown message type:', message.type);
+        }
     };
 
     ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Handle reconnection or cleanup if necessary
     };
 }
 
@@ -545,7 +575,7 @@ function handlePartnerDisconnect() {
     console.log('Disconnected from peer');
 
     // Automatically attempt to find a new partner
-    intentionalDisconnect = false; // Ensure the flag is false
+    intentionalDisconnect = false;
     sendMessage({ type: 'ready' });
 }
 
