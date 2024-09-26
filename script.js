@@ -249,10 +249,11 @@ function createPeerConnection() {
     peerConnection.onnegotiationneeded = async () => {
         try {
             makingOffer = true;
-            await peerConnection.setLocalDescription();
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
             sendMessage({ type: 'offer', offer: peerConnection.localDescription });
         } catch (err) {
-            console.error('Error during negotiation:', err);
+            console.error('Error during negotiationneeded event:', err);
         } finally {
             makingOffer = false;
         }
@@ -409,21 +410,30 @@ function startConnection(isOfferer) {
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
-    try {
-        console.log(`Setting remote description (${isOffer ? 'offer' : 'answer'})`);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(description));
-        console.log('Remote description set successfully');
+    const offerCollision = isOffer && (makingOffer || peerConnection.signalingState !== "stable");
+    ignoreOffer = !polite && offerCollision;
+    if (ignoreOffer) {
+        console.log('Ignoring offer due to collision');
+        return;
+    }
 
+    try {
+        await peerConnection.setRemoteDescription(description);
         if (isOffer) {
-            console.log('Creating answer');
             const answer = await peerConnection.createAnswer();
-            console.log('Setting local description (answer)');
             await peerConnection.setLocalDescription(answer);
-            console.log('Sending answer');
             sendMessage({ type: 'answer', answer: peerConnection.localDescription });
         }
-    } catch (error) {
-        console.error('Error in handleOfferOrAnswer:', error);
+
+        // Add queued ICE candidates after setting remote description
+        while (iceCandidatesQueue.length) {
+            const candidate = iceCandidatesQueue.shift();
+            await peerConnection.addIceCandidate(candidate).catch(e => {
+                console.error('Error adding queued ice candidate', e);
+            });
+        }
+    } catch (err) {
+        console.error('Error handling offer or answer:', err);
     }
 }
 
@@ -704,17 +714,6 @@ function checkConnectionStatus() {
         console.log('Connection status:', peerConnection.connectionState);
         console.log('ICE connection state:', peerConnection.iceConnectionState);
         console.log('Signaling state:', peerConnection.signalingState);
-    }
-}
-
-function forceRelayICECandidates() {
-    if (peerConnection) {
-        peerConnection.getTransceivers().forEach(transceiver => {
-            transceiver.sender.setParameters({
-                ...transceiver.sender.getParameters(),
-                encodings: [{ networkPriority: 'low' }]
-            });
-        });
     }
 }
 
