@@ -290,6 +290,9 @@ function handleWebSocketMessage(event) {
         case 'audio-state':
             addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
             break;
+        case 'blur_state':
+            handleBlurStateUpdate(message);
+            break;
         default:
             console.log('Unhandled message type:', message.type);
     }
@@ -446,15 +449,13 @@ function updateBlurState() {
         removeBlurButton.style.backgroundColor = 'blue';
         removeBlurButton.style.color = 'white';
         removeBlurButton.disabled = true;
-        addMessageToChat('System', "Blur has been removed for both parties.");
     } else if (localWantsBlurOff && !remoteWantsBlurOff) {
         // Local wants to remove blur; waiting for remote
         localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
-        removeBlurButton.textContent = 'Waiting for partner';
+        removeBlurButton.textContent = 'Cancel Request';
         removeBlurButton.style.backgroundColor = 'yellow';
-        removeBlurButton.disabled = true;
-        addMessageToChat('System', "Waiting for your partner to accept removing the blur.");
+        removeBlurButton.disabled = false;
     } else if (!localWantsBlurOff && remoteWantsBlurOff) {
         // Remote wants to remove blur; waiting for local confirmation
         localVideo.style.filter = 'blur(10px)';
@@ -462,7 +463,6 @@ function updateBlurState() {
         removeBlurButton.textContent = 'Accept Remove Blur';
         removeBlurButton.style.backgroundColor = 'green';
         removeBlurButton.disabled = false;
-        addMessageToChat('System', "Your partner wants to remove blur. Click 'Accept Remove Blur' to agree.");
     } else {
         // Both want blur on
         localVideo.style.filter = 'blur(10px)';
@@ -478,18 +478,9 @@ function updateBlurState() {
 
 function toggleBlur() {
     console.log('Toggle blur clicked. Current state:', localWantsBlurOff);
-    if (!localWantsBlurOff) {
-        localWantsBlurOff = true;
-        if (!localRequestSent) {
-            sendBlurState();
-            addMessageToChat('System', "You requested to remove the blur. Waiting for your partner to accept.");
-            localRequestSent = true;
-        }
-    } else if (remoteRequestReceived) {
-        // Accepting the remote peer's request
-        sendBlurState();
-    }
-    updateBlurState();
+    localWantsBlurOff = !localWantsBlurOff;
+    sendBlurState();
+    updateBlurStateAndNotify(true);
 }
 
 function sendBlurState() {
@@ -506,12 +497,28 @@ function handleBlurStateUpdate(message) {
     console.log('Handling blur state update:', message);
     if (message.username !== localStorage.getItem('username')) {
         remoteWantsBlurOff = message.wantsBlurOff;
-        if (remoteWantsBlurOff && !remoteRequestReceived) {
-            addMessageToChat('System', "Your partner wants to remove the blur. Click 'Remove Blur' to accept.");
-            remoteRequestReceived = true;
-        }
         console.log('Updated remote blur state:', remoteWantsBlurOff);
-        updateBlurState();
+        updateBlurStateAndNotify(false);
+    }
+}
+
+function updateBlurStateAndNotify(isLocal) {
+    updateBlurState();
+    
+    if (isLocal) {
+        if (localWantsBlurOff) {
+            addMessageToChat('System', "You requested to remove the blur. Waiting for your partner to accept.");
+        } else {
+            addMessageToChat('System', "You cancelled your blur removal request.");
+        }
+    } else {
+        if (remoteWantsBlurOff && !localWantsBlurOff) {
+            addMessageToChat('System', "Your partner wants to remove the blur. Click 'Remove Blur' to accept.");
+        } else if (!remoteWantsBlurOff && localWantsBlurOff) {
+            addMessageToChat('System', "Your partner cancelled their blur removal request.");
+        } else if (remoteWantsBlurOff && localWantsBlurOff) {
+            addMessageToChat('System', "Blur has been removed for both parties.");
+        }
     }
 }
 
