@@ -163,49 +163,42 @@ const configuration = {
     ]
 };
 
-let peerConnectionInitialized = false;
-
 function createPeerConnection() {
     console.log('Creating peer connection');
-    if (!peerConnection) {
-        try {
-            peerConnection = new RTCPeerConnection(configuration);
-            console.log('Peer connection created successfully');
+    try {
+        const pc = new RTCPeerConnection(configuration);
+        console.log('Peer connection created successfully');
 
-            peerConnection.onicecandidate = handleICECandidate;
-            peerConnection.ontrack = handleTrack;
-            peerConnection.oniceconnectionstatechange = () => {
-                console.log('ICE connection state:', peerConnection.iceConnectionState);
-                if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
-                    console.log('ICE connected, attempting to play remote video');
-                    playRemoteVideo();
-                }
-            };
-            peerConnection.onsignalingstatechange = () => {
-                console.log('Signaling state:', peerConnection.signalingState);
-            };
-            peerConnection.onconnectionstatechange = () => {
-                console.log('Connection state:', peerConnection.connectionState);
-            };
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    console.log('Adding local track to peer connection:', track.kind);
-                    peerConnection.addTrack(track, localStream);
-                });
-            } else {
-                console.warn('No local stream available when creating peer connection');
+        pc.onicecandidate = handleICECandidate;
+        pc.ontrack = handleTrack;
+        pc.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                console.log('ICE connected, attempting to play remote video');
+                playRemoteVideo();
             }
+        };
+        pc.onsignalingstatechange = () => {
+            console.log('Signaling state:', pc.signalingState);
+        };
+        pc.onconnectionstatechange = () => {
+            console.log('Connection state:', pc.connectionState);
+        };
 
-            peerConnectionInitialized = true;
-        } catch (error) {
-            console.error('Error creating peer connection:', error);
-            peerConnection = null;
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                console.log('Adding local track to peer connection:', track.kind);
+                pc.addTrack(track, localStream);
+            });
+        } else {
+            console.warn('No local stream available when creating peer connection');
         }
-    } else {
-        console.warn('Peer connection already exists');
+
+        return pc;
+    } catch (error) {
+        console.error('Error creating peer connection:', error);
+        return null;
     }
-    return peerConnection;
 }
 
 function setupWebSocket() {
@@ -260,9 +253,6 @@ function handleIncomingMessage(event) {
     console.log('Received message:', data);
 
     switch (data.type) {
-        case 'waiting':
-            updateUIConnectionState('Waiting for peer...');
-            break;
         case 'paired':
             console.log('Paired with peer, isOfferer:', data.isOfferer);
             updateUIConnectionState('Connected to peer');
@@ -270,8 +260,10 @@ function handleIncomingMessage(event) {
             break;
         case 'offer':
             console.log('Received offer');
-            const pc = createPeerConnection();
-            if (pc) {
+            if (!peerConnection) {
+                peerConnection = createPeerConnection();
+            }
+            if (peerConnection) {
                 handleOfferOrAnswer(data.offer, true);
             } else {
                 console.error('Failed to create peer connection for offer');
@@ -316,23 +308,23 @@ function updateUIConnectionState(state) {
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
-    const pc = createPeerConnection();
+    peerConnection = createPeerConnection();
     
-    if (!pc) {
+    if (!peerConnection) {
         console.error('Failed to create peer connection');
         return;
     }
     
     if (isOfferer) {
         console.log('Creating offer');
-        pc.createOffer()
+        peerConnection.createOffer()
             .then(offer => {
                 console.log('Setting local description (offer)');
-                return pc.setLocalDescription(offer);
+                return peerConnection.setLocalDescription(offer);
             })
             .then(() => {
                 console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: pc.localDescription });
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
     }
@@ -340,7 +332,7 @@ function startConnection(isOfferer) {
 
 function handleOfferOrAnswer(description, isOffer) {
     console.log(`Handling ${isOffer ? 'offer' : 'answer'}:`, description);
-    if (peerConnectionInitialized && peerConnection) {
+    if (peerConnection) {
         peerConnection.setRemoteDescription(new RTCSessionDescription(description))
             .then(() => {
                 console.log('Set remote description successfully');
@@ -369,7 +361,7 @@ function handleOfferOrAnswer(description, isOffer) {
 
 function handleNewICECandidate(candidate) {
     console.log('Received ICE candidate:', candidate);
-    if (peerConnectionInitialized && peerConnection) {
+    if (peerConnection) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
             .then(() => console.log('Added ICE candidate successfully'))
             .catch(error => console.error('Error adding ICE candidate:', error));
@@ -380,8 +372,11 @@ function handleNewICECandidate(candidate) {
 
 function handleICECandidate(event) {
     if (event.candidate) {
-        console.log('Sending ICE candidate:', event.candidate);
-        sendMessage({ type: 'candidate', candidate: event.candidate });
+        console.log('Sending ICE candidate');
+        sendMessage({
+            type: 'candidate',
+            candidate: event.candidate
+        });
     } else {
         console.log('All ICE candidates have been sent');
     }
@@ -396,7 +391,9 @@ function handleTrack(event) {
             console.log('Set remote video source');
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
-                playRemoteVideo();
+                remoteVideo.play().then(() => {
+                    console.log('Remote video playing successfully');
+                }).catch(e => console.error('Error playing remote video:', e));
             };
         } else {
             console.error('Remote video element not found');
