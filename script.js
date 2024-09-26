@@ -28,15 +28,13 @@ let polite = false; // Will be set based on your role
 let isBlurred = true; // For preview
 let localWantsBlurOff = false;
 let remoteWantsBlurOff = false;
-let localRequestSent = false;
-let remoteRequestReceived = false;
 let isConnectedToPeer = false;
 let dataChannel;
 let isAudioEnabled = false;
 let username = '';
 
 // WebSocket setup
-let ws;
+let socket;
 let socketReady = false;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
@@ -50,7 +48,9 @@ async function setupLocalPreview() {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         localVideoPreview.srcObject = localStream;
         applyBlurEffectPreview();
+        console.log('Camera accessed successfully for preview');
     } catch (error) {
+        console.error('Error accessing camera:', error);
         alert('Unable to access camera. Please ensure you have given permission and try again.');
     }
 }
@@ -66,6 +66,7 @@ toggleBlurButton.addEventListener('click', () => {
 
 function updateStartChatButton() {
     startChatButton.disabled = !(usernameInput.value.trim() && termsCheckbox.checked);
+    console.log('Start Chat button state updated:', !startChatButton.disabled);
 }
 
 usernameInput.addEventListener('input', updateStartChatButton);
@@ -81,6 +82,7 @@ startChatButton.addEventListener('click', () => {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded');
     setupLocalPreview();
     updateStartChatButton(); // Initial check
 });
@@ -93,8 +95,8 @@ function initializeChat() {
         console.log(`Welcome, ${username}!`);
     }
 
-    // Set initial blur preference
-    localWantsBlurOff = false; // Change this line to ensure blur is on by default
+    // Set initial blur preference based on preview
+    localWantsBlurOff = !isBlurred;
 
     // Initialize chat functionalities
     setupWebSocket();       // WebSocket setup before peer connection
@@ -107,6 +109,7 @@ async function initializeConnection() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
+        console.log('Local stream set up successfully for chat');
         // Do not call createPeerConnection() here
     } catch (error) {
         console.error('Error setting up local stream:', error);
@@ -137,13 +140,12 @@ function createPeerConnection() {
     };
 
     peerConnection.ontrack = event => {
+        console.log('Received remote track', event);
         if (event.track.kind === 'video') {
             const remoteVideo = document.getElementById('remoteVideo');
             if (remoteVideo.srcObject !== event.streams[0]) {
                 remoteVideo.srcObject = event.streams[0];
-                
-                // Add this to ensure the video plays
-                remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
+                console.log('Setting remote video stream');
             }
         }
     };
@@ -161,14 +163,25 @@ function createPeerConnection() {
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
-        checkRelayConnection();
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'failed') {
+            console.log('ICE connection failed, restarting');
+            restartIce();
+        } else if (peerConnection.iceConnectionState === 'connected') {
+            console.log('ICE connection established');
+            checkRelayConnection();
+        } else if (peerConnection.iceConnectionState === 'disconnected') {
+            console.log('ICE connection disconnected, attempting to reconnect');
+            setTimeout(restartIce, 2000);
+        }
     };
 
     peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state change:', peerConnection.connectionState);
     };
 
     peerConnection.onicegatheringstatechange = () => {
+        console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
 
     // Set up data channel based on role
@@ -183,82 +196,75 @@ function createPeerConnection() {
             setupDataChannel();
         };
     }
+
+    console.log('Peer connection created');
 }
 
 function setupWebSocket() {
-    const ws = new WebSocket('wss://blurd.adaptable.app');
+    socket = new WebSocket('wss://blurd.adaptable.app');
 
-    ws.onopen = () => {
+    socket.onopen = () => {
         console.log('WebSocket connected');
-        sendToServer({ type: 'ready', username: username }); // Ensure 'username' is defined
+        socketReady = true;
+        reconnectAttempts = 0;
+        intentionalDisconnect = false; // Reset the flag on successful connection
+
+        sendMessage({ type: 'ready' });
+        // Start the heartbeat interval after the socket is open
+        startHeartbeat();
     };
 
-    ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        console.log('Received WebSocket message:', message);
+    socket.onclose = () => {
+        console.log('WebSocket disconnected');
+        socketReady = false;
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-        switch (message.type) {
-            case 'waiting':
-                console.log('Waiting for peer...');
-                break;
-            case 'paired':
-                console.log('Paired with a new peer');
-                setupPeerConnection();
-                if (message.isOfferer) {
-                    createOffer();
-                }
-                break;
-            case 'offer':
-                handleOffer(message.offer);
-                break;
-            case 'answer':
-                handleAnswer(message.answer);
-                break;
-            case 'ice-candidate':
-                handleNewICECandidate(message.candidate);
-                break;
-            case 'chat':
-                handleChatMessage(message.message);
-                break;
-            // ... other cases ...
-            default:
-                console.warn('Unknown message type:', message.type);
+        // Attempt to reconnect only if the disconnection was unintentional
+        if (!intentionalDisconnect && reconnectAttempts < maxReconnectAttempts) {
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
+            reconnectAttempts++;
+            setTimeout(setupWebSocket, reconnectInterval);
+        } else {
+            console.error('Max reconnect attempts reached or intentional disconnect. Please refresh the page.');
         }
     };
 
-    ws.onerror = (error) => {
+    socket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
 
-    ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Handle reconnection or cleanup if necessary
-    };
+    socket.onmessage = handleIncomingMessage;
 }
 
 function startHeartbeat() {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(() => {
-        if (document.visibilityState === 'visible' && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
+        if (document.visibilityState === 'visible' && socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
         }
     }, 15000); // Every 15 seconds
 }
 
 function sendMessage(message) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message));
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        message.username = username;
+        socket.send(JSON.stringify(message));
         console.log('Sent message:', message);
     } else {
-        console.error('WebSocket is not open. Cannot send message:', message);
+        console.log('WebSocket not ready. Message not sent:', message);
     }
 }
 
-function handleWebSocketMessage(event) {
-    const message = JSON.parse(event.data);
-    console.log('Received WebSocket message:', message);
+function handleIncomingMessage(event) {
+    const data = JSON.parse(event.data);
+    console.log('Received message:', data);
 
-    switch (message.type) {
+    if (data.type === 'pong') {
+        // Connection is alive
+        return;
+    }
+
+    switch (data.type) {
         case 'waiting':
             console.log('Waiting for peer...');
             isConnectedToPeer = false;
@@ -272,8 +278,8 @@ function handleWebSocketMessage(event) {
             if (statusMessage) {
                 statusMessage.textContent = 'Connected to a peer';
             }
-            polite = !message.isOfferer; // Corrected assignment
-            startConnection(message.isOfferer);
+            polite = !data.isOfferer; // Corrected assignment
+            startConnection(data.isOfferer);
             clearChat();
             resetBlurState();
             break;
@@ -285,25 +291,25 @@ function handleWebSocketMessage(event) {
             handlePartnerDisconnect();
             break;
         case 'offer':
-            handleOfferOrAnswer(new RTCSessionDescription(message.offer), true);
+            console.log('Received offer');
+            handleOfferOrAnswer(new RTCSessionDescription(data.offer), true);
             break;
         case 'answer':
-            handleOfferOrAnswer(new RTCSessionDescription(message.answer), false);
+            console.log('Received answer');
+            handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
             break;
         case 'ice-candidate':
-            handleIceCandidate(message.candidate);
+            console.log('Received ICE candidate');
+            handleIceCandidate(data.candidate);
             break;
         case 'chat':
-            handleChatMessage(message.message);
+            addMessageToChat(data.username, data.message);
             break;
         case 'audio-state':
-            addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
-            break;
-        case 'blur_state':
-            handleBlurStateUpdate(message);
+            addMessageToChat('System', `Your partner has ${data.enabled ? 'enabled' : 'disabled'} their audio.`);
             break;
         default:
-            console.log('Unhandled message type:', message.type);
+            console.log('Unknown message type:', data.type);
     }
 }
 
@@ -314,14 +320,7 @@ function startConnection(isOfferer) {
         peerConnection.close();
     }
     createPeerConnection();
-    
-    // Add local tracks to the peer connection
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-    
-    // Log media streams after a short delay
-    setTimeout(logMediaStreams, 2000);
+    // Do not manually call onnegotiationneeded
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
@@ -354,83 +353,79 @@ async function handleOfferOrAnswer(description, isOffer) {
 }
 
 function handleIceCandidate(candidate) {
+    console.log('Handling ICE candidate:', JSON.stringify(candidate));
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(candidate)
+            .then(() => console.log('ICE candidate added successfully'))
+            .catch(e => console.error('Error adding received ice candidate', e));
     } else {
+        console.log('Queueing ICE candidate');
         iceCandidatesQueue.push(candidate);
     }
 }
 
 function setupDataChannel() {
-    if (dataChannel) {
+    if (peerConnection.createDataChannel) {
+        dataChannel = peerConnection.createDataChannel('chat');
         dataChannel.onopen = () => console.log('Data channel opened');
         dataChannel.onclose = () => console.log('Data channel closed');
         dataChannel.onmessage = handleDataChannelMessage;
     } else {
-        console.error('Data channel is not available');
+        console.error('Data channels are not supported');
     }
 }
 
 function handleDataChannelMessage(event) {
     const message = JSON.parse(event.data);
     console.log('Received data channel message:', message);
-    if (message.type === 'blur_state') {
-        remoteWantsBlurOff = message.wantsBlurOff;
+    if (message.type === 'blurState') {
+        remoteWantsBlurOff = message.blurState;
         updateBlurState();
-    } else {
-        // Handle other message types if necessary
     }
 }
 
 // Chat Functions
 function setupChat() {
-    const chatBox = document.getElementById('chatBox');
-    const messageInput = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
+    console.log('Setting up chat');
 
-    if (!chatBox || !messageInput || !sendButton) {
+    if (chatInput && sendButton && chatMessages) {
+        sendButton.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    } else {
         console.error('Some chat elements are missing');
-        return;
     }
 
-    // Event listener for sending message on Enter key press
-    messageInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            sendMessage();
-        }
-    });
-
-    // Event listener for Send button
-    sendButton.addEventListener('click', sendMessage);
+    toggleAudioButton.addEventListener('click', toggleAudio);
+    nextButton.addEventListener('click', handleNext);
+    disconnectButton.addEventListener('click', handleDisconnect);
 }
 
-function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    if (!messageInput) {
-        console.error('Message input element with id "messageInput" not found');
-        return;
-    }
-    const message = messageInput.value.trim();
-    if (message && dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
-        displayMessage('You', message);
-        messageInput.value = ''; // Clear the input field
+function sendChatMessage() {
+    const message = chatInput.value.trim();
+    if (message) {
+        sendMessage({ type: 'chat', message: message });
+        addMessageToChat('You', message);
+        chatInput.value = '';
     } else {
-        console.log('Cannot send message: DataChannel not ready or message is empty');
+        console.log('Empty message, not sending');
     }
 }
 
-function displayMessage(sender, message) {
-    const chatBox = document.getElementById('chatBox');
-    if (chatBox) {
-        const messageElement = document.createElement('div');
-        messageElement.className = 'chat-box'; // Add the chat-box class for styling
-        messageElement.textContent = `${sender}: ${message}`;
-        chatBox.appendChild(messageElement);
-        chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
-    } else {
-        console.error('Chat box element with id "chatBox" not found.');
+function addMessageToChat(sender, message) {
+    const messageElement = document.createElement('div');
+    
+    if (sender === 'System') {
+        messageElement.style.fontStyle = 'italic';
+        messageElement.style.color = '#888';
     }
+    
+    messageElement.textContent = `${sender === 'System' ? '' : sender + ': '}${message}`;
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function clearChat() {
@@ -449,93 +444,41 @@ function resetBlurState() {
 function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
-    const removeBlurButton = document.getElementById('removeBlurButton');
 
-    if (!localVideo || !remoteVideo || !removeBlurButton) {
-        console.error('Video elements or remove blur button not found');
-        return;
+    if (localWantsBlurOff) {
+        localVideo.style.filter = 'none';
+    } else {
+        localVideo.style.filter = 'blur(10px)';
     }
 
-    console.log('Updating blur state:', { localWantsBlurOff, remoteWantsBlurOff });
-
-    if (localWantsBlurOff && remoteWantsBlurOff) {
-        // Both want to remove blur
-        localVideo.style.filter = 'none';
+    if (remoteWantsBlurOff) {
         remoteVideo.style.filter = 'none';
-        removeBlurButton.textContent = 'DAAAAMN!';
-        removeBlurButton.style.backgroundColor = 'blue';
-        removeBlurButton.style.color = 'white';
-        removeBlurButton.disabled = true;
-    } else if (localWantsBlurOff && !remoteWantsBlurOff) {
-        // Local wants to remove blur; waiting for remote
-        localVideo.style.filter = 'blur(10px)';
-        remoteVideo.style.filter = 'blur(10px)';
-        removeBlurButton.textContent = 'Cancel Request';
-        removeBlurButton.style.backgroundColor = 'yellow';
-        removeBlurButton.disabled = false;
-    } else if (!localWantsBlurOff && remoteWantsBlurOff) {
-        // Remote wants to remove blur; waiting for local confirmation
-        localVideo.style.filter = 'blur(10px)';
-        remoteVideo.style.filter = 'blur(10px)';
-        removeBlurButton.textContent = 'Accept Remove Blur';
-        removeBlurButton.style.backgroundColor = 'green';
-        removeBlurButton.disabled = false;
     } else {
-        // Both want blur on
-        localVideo.style.filter = 'blur(10px)';
         remoteVideo.style.filter = 'blur(10px)';
-        removeBlurButton.textContent = 'Remove Blur';
-        removeBlurButton.style.backgroundColor = '';
-        removeBlurButton.style.color = '';
-        removeBlurButton.disabled = false;
     }
 
     console.log('Blur state updated');
 }
 
 function toggleBlur() {
-    console.log('Toggle blur clicked. Current state:', localWantsBlurOff);
+    console.log('Toggle blur called');
+    if (!removeBlurButton || removeBlurButton.disabled || !peerConnection || !dataChannel || dataChannel.readyState !== 'open') {
+        console.log('Remove blur button is disabled, not found, or data channel not ready');
+        return;
+    }
     localWantsBlurOff = !localWantsBlurOff;
+    console.log('Local wants blur off:', localWantsBlurOff);
+    updateBlurState();
     sendBlurState();
-    updateBlurStateAndNotify(true);
 }
 
 function sendBlurState() {
-    const message = {
-        type: 'blur_state',
-        wantsBlurOff: localWantsBlurOff,
-        username: localStorage.getItem('username')
-    };
-    console.log('Sending blur state:', message);
-    sendMessage(message);
-}
-
-function handleBlurStateUpdate(message) {
-    console.log('Handling blur state update:', message);
-    if (message.username !== localStorage.getItem('username')) {
-        remoteWantsBlurOff = message.wantsBlurOff;
-        console.log('Updated remote blur state:', remoteWantsBlurOff);
-        updateBlurStateAndNotify(false);
-    }
-}
-
-function updateBlurStateAndNotify(isLocal) {
-    updateBlurState();
-    
-    if (isLocal) {
-        if (localWantsBlurOff) {
-            addMessageToChat('System', "You requested to remove the blur. Waiting for your partner to accept.");
-        } else {
-            addMessageToChat('System', "You cancelled your blur removal request.");
-        }
+    if (dataChannel && dataChannel.readyState === 'open') {
+        const message = JSON.stringify({ type: 'blurState', blurState: localWantsBlurOff });
+        dataChannel.send(message);
+        console.log('Sent blur state:', message);
     } else {
-        if (remoteWantsBlurOff && !localWantsBlurOff) {
-            addMessageToChat('System', "Your partner wants to remove the blur. Click 'Remove Blur' to accept.");
-        } else if (!remoteWantsBlurOff && localWantsBlurOff) {
-            addMessageToChat('System', "Your partner cancelled their blur removal request.");
-        } else if (remoteWantsBlurOff && localWantsBlurOff) {
-            addMessageToChat('System', "Blur has been removed for both parties.");
-        }
+        console.log('Data channel is not open. Cannot send blur state.');
     }
 }
 
@@ -583,7 +526,7 @@ function handlePartnerDisconnect() {
     console.log('Disconnected from peer');
 
     // Automatically attempt to find a new partner
-    intentionalDisconnect = false;
+    intentionalDisconnect = false; // Ensure the flag is false
     sendMessage({ type: 'ready' });
 }
 
@@ -602,7 +545,7 @@ function handleDisconnect() {
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     handlePartnerDisconnect();
-    if (ws) ws.close(); // Close the WebSocket only on full disconnect
+    if (socket) socket.close(); // Close the WebSocket only on full disconnect
 }
 
 function updateConnectionStatus() {
@@ -615,7 +558,7 @@ function updateConnectionStatus() {
 
 window.onbeforeunload = () => {
     if (peerConnection) peerConnection.close();
-    if (ws) ws.close();
+    if (socket) socket.close();
 };
 
 function startChat() {
@@ -650,6 +593,7 @@ function startChat() {
 
 
 function setupBlurEffect() {
+    console.log('Setting up blur effect');
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
     const removeBlurButton = document.getElementById('removeBlurButton');
@@ -664,10 +608,12 @@ function setupBlurEffect() {
     remoteVideo.style.filter = 'blur(10px)';
 
     removeBlurButton.addEventListener('click', toggleBlur);
+    console.log('Blur effect setup complete');
 }
 
 function restartIce() {
     if (peerConnection) {
+        console.log('Restarting ICE connection');
         peerConnection.restartIce();
         peerConnection.createOffer({ iceRestart: true })
             .then(offer => peerConnection.setLocalDescription(offer))
@@ -678,6 +624,13 @@ function restartIce() {
     }
 }
 
+function checkConnectionStatus() {
+    if (peerConnection) {
+        console.log('Connection status:', peerConnection.connectionState);
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        console.log('Signaling state:', peerConnection.signalingState);
+    }
+}
 
 function forceRelayICECandidates() {
     if (peerConnection) {
@@ -690,124 +643,23 @@ function forceRelayICECandidates() {
     }
 }
 
-// Call these functions periodically
+function checkRelayConnection() {
+    if (peerConnection) {
+        peerConnection.getStats(null).then(stats => {
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    console.log('Active candidate pair:', report);
+                    if (report.remoteCandidateType === 'relay' || report.localCandidateType === 'relay') {
+                        console.log('Connection is using a relay (TURN) server');
+                    } else {
+                        console.log('Connection is not using a relay');
+                    }
+                }
+            });
+        });
+    }
+}
+
+// Call this function periodically
 setInterval(checkConnectionStatus, 30000);
 setInterval(checkRelayConnection, 30000);
-
-// Add these function definitions at the appropriate place in your script
-
-function checkConnectionStatus() {
-    // Implement connection status check logic
-    console.log('Checking connection status...');
-    // Add your implementation here
-}
-
-function logMediaStreams() {
-    // Implement media stream logging logic
-    console.log('Logging media streams...');
-    // Add your implementation here
-}
-
-function handleChatMessage(message) {
-    console.log('Received chat message:', message);
-    const chatBox = document.getElementById('chatBox');
-    const messageElement = document.createElement('div');
-    messageElement.className = 'chat-box'; // Add the chat-box class
-    messageElement.textContent = `Partner: ${message}`;
-    chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
-}
-
-// Update the sendMessage function to use the correct id and class
-function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    if (!messageInput) {
-        console.error('Message input element not found');
-        return;
-    }
-    const message = messageInput.value.trim();
-    if (message && dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
-        displayMessage('You', message);
-        messageInput.value = '';
-    } else {
-        console.log('Cannot send message: DataChannel not ready or message empty');
-    }
-}
-
-function displayMessage(sender, message) {
-    const chatBox = document.getElementById('chatBox');
-    const messageElement = document.createElement('div');
-    messageElement.className = 'chat-box'; // Add the chat-box class
-    messageElement.textContent = `${sender}: ${message}`;
-    chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to the bottom
-}
-
-// Add this function at the top of your script
-function checkRelayConnection() {
-    console.log('Checking relay connection...');
-    // Implement your relay connection check logic here
-}
-
-// Update the WebSocket onopen handler
-ws.onopen = () => {
-    console.log('WebSocket connected');
-    // Only send the 'ready' message
-    sendToServer({ type: 'ready', username: username });
-};
-
-// Modify the sendMessage function to be more robust
-function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    if (!messageInput) {
-        console.error('Message input element not found');
-        return;
-    }
-    const message = messageInput.value.trim();
-    if (message && dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'chat', message: message }));
-        displayMessage('You', message);
-        messageInput.value = '';
-    } else {
-        console.log('Cannot send message: DataChannel not ready or message empty');
-    }
-}
-
-// Ensure this event listener is set up when the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
-    } else {
-        console.error('Message input element not found on DOMContentLoaded');
-    }
-});
-
-// Update the peerConnection setup
-function setupPeerConnection() {
-    peerConnection = new RTCPeerConnection(configuration);
-    
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            sendToServer({
-                type: 'ice-candidate',
-                candidate: event.candidate
-            });
-        }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state changed:', peerConnection.iceConnectionState);
-        checkRelayConnection();
-    };
-
-    // ... other peerConnection setup ...
-}
-
-// Call this function when appropriate (e.g., when paired with a peer)
-setupPeerConnection();
