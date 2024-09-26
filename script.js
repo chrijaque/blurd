@@ -183,6 +183,9 @@ function createPeerConnection() {
         };
         pc.onconnectionstatechange = () => {
             console.log('Connection state:', pc.connectionState);
+            if (pc.connectionState === 'connected') {
+                console.log('Peer connection fully established');
+            }
         };
 
         if (localStream) {
@@ -391,10 +394,12 @@ function handleTrack(event) {
             console.log('Set remote video source');
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
+                console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
                 remoteVideo.play().then(() => {
                     console.log('Remote video playing successfully');
                 }).catch(e => console.error('Error playing remote video:', e));
             };
+            remoteVideo.onerror = (e) => console.error('Remote video error:', e);
         } else {
             console.error('Remote video element not found');
         }
@@ -672,29 +677,19 @@ function checkRemoteVideoState() {
         console.log('Remote video muted:', remoteVideo.muted);
         console.log('Remote video volume:', remoteVideo.volume);
         console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-        
-        if (remoteVideo.srcObject) {
-            const videoTracks = remoteVideo.srcObject.getVideoTracks();
-            console.log('Remote video tracks:', videoTracks.length);
-            videoTracks.forEach((track, index) => {
-                console.log(`Video track ${index}:`, track.label, 'enabled:', track.enabled, 'muted:', track.muted);
-            });
-        } else {
-            console.log('No srcObject set on remote video');
-        }
     } else {
         console.error('Remote video element not found');
     }
 }
 
-// Call this function every 5 seconds
+// Call this function every 5 seconds after connection is established
 setInterval(checkRemoteVideoState, 5000);
 
 function playRemoteVideo() {
     if (remoteVideo && remoteVideo.paused) {
         remoteVideo.play().then(() => {
-            console.log('Remote video playing successfully');
-        }).catch(e => console.error('Error playing remote video:', e));
+            console.log('Forced remote video to play');
+        }).catch(e => console.error('Error forcing remote video to play:', e));
     }
 }
 
