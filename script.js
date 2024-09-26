@@ -269,23 +269,7 @@ function handleWebSocketMessage(event) {
             handleIceCandidate(message.candidate);
             break;
         case 'chat':
-            try {
-                const chatData = JSON.parse(message.message);
-                if (chatData.type === 'blur_state') {
-                    console.log('Received blur state update as chat:', chatData);
-                    if (chatData.username !== localStorage.getItem('username')) {
-                        remoteWantsBlurOff = chatData.wantsBlurOff;
-                        console.log('Updated remote blur state:', remoteWantsBlurOff);
-                        updateBlurState();
-                    } else {
-                        console.log('Ignoring own blur state message');
-                    }
-                } else {
-                    handleChatMessage(message);
-                }
-            } catch (e) {
-                handleChatMessage(message);
-            }
+            handleChatMessage(message.message);
             break;
         case 'audio-state':
             addMessageToChat('System', `Your partner has ${message.enabled ? 'enabled' : 'disabled'} their audio.`);
@@ -676,3 +660,23 @@ function forceRelayICECandidates() {
 // Call these functions periodically
 setInterval(checkConnectionStatus, 30000);
 setInterval(checkRelayConnection, 30000);
+
+// Add these function definitions at the appropriate place in your script
+
+function checkConnectionStatus() {
+    // Implement connection status check logic
+    console.log('Checking connection status...');
+    // Add your implementation here
+}
+
+function logMediaStreams() {
+    // Implement media stream logging logic
+    console.log('Logging media streams...');
+    // Add your implementation here
+}
+
+function handleChatMessage(message) {
+    // Implement chat message handling logic
+    console.log('Received chat message:', message);
+    // Add your implementation here, e.g., updating the UI with the new message
+}
