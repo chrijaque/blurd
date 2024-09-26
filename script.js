@@ -167,35 +167,19 @@ function createPeerConnection() {
     console.log('Creating peer connection');
     try {
         const pc = new RTCPeerConnection(configuration);
-        console.log('Peer connection created successfully');
+        console.log('Peer connection created successfully:', pc);
 
         pc.onicecandidate = handleICECandidate;
         pc.ontrack = handleTrack;
         pc.oniceconnectionstatechange = () => {
-            console.log('ICE connection state:', pc.iceConnectionState);
-            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-                console.log('ICE connected, attempting to play remote video');
-                playRemoteVideo();
-            }
+            console.log('ICE connection state changed:', pc.iceConnectionState);
         };
         pc.onsignalingstatechange = () => {
-            console.log('Signaling state:', pc.signalingState);
+            console.log('Signaling state changed:', pc.signalingState);
         };
         pc.onconnectionstatechange = () => {
-            console.log('Connection state:', pc.connectionState);
-            if (pc.connectionState === 'connected') {
-                console.log('Peer connection fully established');
-            }
+            console.log('Connection state changed:', pc.connectionState);
         };
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                console.log('Adding local track to peer connection:', track.kind);
-                pc.addTrack(track, localStream);
-            });
-        } else {
-            console.warn('No local stream available when creating peer connection');
-        }
 
         return pc;
     } catch (error) {
@@ -318,6 +302,15 @@ function startConnection(isOfferer) {
         return;
     }
     
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            console.log('Adding local track to peer connection:', track.kind);
+            peerConnection.addTrack(track, localStream);
+        });
+    } else {
+        console.warn('No local stream available when starting connection');
+    }
+
     if (isOfferer) {
         console.log('Creating offer');
         peerConnection.createOffer()
