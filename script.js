@@ -107,26 +107,37 @@ function initializeChat() {
 
 async function initializeConnection() {
     try {
+        console.log('Initializing connection');
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
-        console.log('Local stream set up successfully for chat');
-        // Do not call createPeerConnection() here
+        console.log('Local stream set up successfully');
+        console.log('Local stream tracks:', localStream.getTracks().map(t => t.kind));
     } catch (error) {
         console.error('Error setting up local stream:', error);
     }
 }
 
 function createPeerConnection() {
+    console.log('Creating peer connection');
     peerConnection = new RTCPeerConnection(configuration);
+    
+    peerConnection.onicecandidate = handleICECandidate;
+    peerConnection.ontrack = handleTrack;
+    peerConnection.oniceconnectionstatechange = handleICEConnectionStateChange;
     const configuration = {
         iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:fr-turn1.xirsys.com' },
             {
-                urls: 'turn:numb.viagenie.ca',
-                username: 'webrtc@live.com',
-                credential: 'muazkh'
+                urls: [
+                    'turn:fr-turn1.xirsys.com:80?transport=udp',
+                    'turn:fr-turn1.xirsys.com:3478?transport=udp',
+                    'turn:fr-turn1.xirsys.com:80?transport=tcp',
+                    'turn:fr-turn1.xirsys.com:3478?transport=tcp',
+                    'turns:fr-turn1.xirsys.com:443?transport=tcp',
+                    'turns:fr-turn1.xirsys.com:5349?transport=tcp'
+                ],
+                username: 'NtUxUgJUFwDb1LrBQAXzLGpsqx9PBXQQnEa0a1s2LL3T93oSqD2a3jC1gqM1SG27AAAAAGbjXnBjaHJpamFxdWU=',
+                credential: 'd11f86be-714e-11ef-8726-0242ac120004'
             }
         ],
         iceCandidatePoolSize: 10,
@@ -272,8 +283,7 @@ function sendMessage(message) {
     }
 }
 
-function handleIncomingMessage(event) {
-    const data = JSON.parse(event.data);
+function handleIncomingMessage(message) {
     console.log('Received message:', data);
 
     if (data.type === 'pong') {
@@ -315,9 +325,9 @@ function handleIncomingMessage(event) {
             console.log('Received answer');
             handleOfferOrAnswer(new RTCSessionDescription(data.answer), false);
             break;
-        case 'ice-candidate':
-            console.log('Received ICE candidate');
-            handleIceCandidate(data.candidate);
+            case 'candidate':
+                console.log('Received ICE candidate');
+            handleNewICECandidate(message.candidate);
             break;
         case 'chat':
             addMessageToChat(data.username, data.message);
@@ -332,44 +342,44 @@ function handleIncomingMessage(event) {
 
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
+    console.log('Starting connection, isOfferer:', isOfferer);
     if (peerConnection) {
         console.log('Closing existing peer connection');
         peerConnection.close();
     }
     createPeerConnection();
-    console.log('Peer connection created, isOfferer:', isOfferer);
-    // Log the state of the local stream
-    console.log('Local stream tracks:', localStream ? localStream.getTracks() : 'No local stream');
+    
+    if (isOfferer) {
+        console.log('Creating offer');
+        peerConnection.createOffer()
+            .then(offer => {
+                console.log('Setting local description');
+                return peerConnection.setLocalDescription(offer);
+            })
+            .then(() => {
+                console.log('Sending offer');
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+            })
+            .catch(error => console.error('Error creating offer:', error));
+    }
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
-    const offerCollision = isOffer &&
-                           (makingOffer || peerConnection.signalingState !== "stable");
-
-    ignoreOffer = !polite && offerCollision;
-    if (ignoreOffer) {
-        console.log('Ignoring offer due to collision');
-        return;
-    }
-
     try {
-        await peerConnection.setRemoteDescription(description);
-        console.log('Set remote description successfully');
-        if (isOffer) {
-            await peerConnection.setLocalDescription();
-            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-            console.log('Created and sent answer');
-        }
+        console.log(`Setting remote description (${isOffer ? 'offer' : 'answer'})`);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(description));
+        console.log('Remote description set successfully');
 
-        // Add queued ICE candidates after setting remote description
-        while (iceCandidatesQueue.length) {
-            const candidate = iceCandidatesQueue.shift();
-            await peerConnection.addIceCandidate(candidate).catch(e => {
-                console.error('Error adding queued ice candidate', e);
-            });
+        if (isOffer) {
+            console.log('Creating answer');
+            const answer = await peerConnection.createAnswer();
+            console.log('Setting local description (answer)');
+            await peerConnection.setLocalDescription(answer);
+            console.log('Sending answer');
+            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
         }
-    } catch (err) {
-        console.error('Error handling offer or answer:', err);
+    } catch (error) {
+        console.error('Error in handleOfferOrAnswer:', error);
     }
 }
 
