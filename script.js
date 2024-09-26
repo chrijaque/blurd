@@ -171,17 +171,12 @@ function createPeerConnection() {
     peerConnection.ontrack = handleTrack;
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'connected') {
-            console.log('ICE connected, peer connection established');
-        } else if (peerConnection.iceConnectionState === 'failed') {
-            console.error('ICE connection failed');
-        }
-    };
-    peerConnection.onicegatheringstatechange = () => {
-        console.log('ICE gathering state:', peerConnection.iceGatheringState);
     };
     peerConnection.onsignalingstatechange = () => {
         console.log('Signaling state:', peerConnection.signalingState);
+    };
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state:', peerConnection.connectionState);
     };
 
     if (localStream) {
@@ -300,7 +295,7 @@ function startConnection(isOfferer) {
         console.log('Creating offer');
         peerConnection.createOffer()
             .then(offer => {
-                console.log('Setting local description');
+                console.log('Setting local description (offer)');
                 return peerConnection.setLocalDescription(offer);
             })
             .then(() => {
