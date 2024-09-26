@@ -117,6 +117,7 @@ async function initializeConnection() {
 }
 
 function createPeerConnection() {
+    peerConnection = new RTCPeerConnection(configuration);
     const configuration = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -130,6 +131,22 @@ function createPeerConnection() {
         ],
         iceCandidatePoolSize: 10,
     };
+
+    // Add local tracks to the peer connection
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    // Handle incoming tracks
+    peerConnection.ontrack = handleTrack;
+
+    function handleTrack(event) {
+        console.log('Received remote track:', event.track);
+        if (remoteVideo.srcObject !== event.streams[0]) {
+            remoteVideo.srcObject = event.streams[0];
+            console.log('Set remote video source');
+        }
+    }
 
     peerConnection = new RTCPeerConnection(configuration);
 
@@ -320,7 +337,9 @@ function startConnection(isOfferer) {
         peerConnection.close();
     }
     createPeerConnection();
-    // Do not manually call onnegotiationneeded
+    console.log('Peer connection created, isOfferer:', isOfferer);
+    // Log the state of the local stream
+    console.log('Local stream tracks:', localStream ? localStream.getTracks() : 'No local stream');
 }
 
 async function handleOfferOrAnswer(description, isOffer) {
@@ -335,9 +354,11 @@ async function handleOfferOrAnswer(description, isOffer) {
 
     try {
         await peerConnection.setRemoteDescription(description);
+        console.log('Set remote description successfully');
         if (isOffer) {
             await peerConnection.setLocalDescription();
             sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+            console.log('Created and sent answer');
         }
 
         // Add queued ICE candidates after setting remote description
