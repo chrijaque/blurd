@@ -171,6 +171,11 @@ function createPeerConnection() {
     peerConnection.ontrack = handleTrack;
     peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'connected') {
+            console.log('ICE connected, peer connection established');
+        } else if (peerConnection.iceConnectionState === 'failed') {
+            console.error('ICE connection failed');
+        }
     };
     peerConnection.onicegatheringstatechange = () => {
         console.log('ICE gathering state:', peerConnection.iceGatheringState);
@@ -282,7 +287,7 @@ function updateUIConnectionState(state) {
     if (stateElement) {
         stateElement.textContent = state;
     } else {
-        console.warn('Connection state element not found');
+        console.warn('Connection state element not found, state:', state);
     }
 }
 
@@ -306,32 +311,41 @@ function startConnection(isOfferer) {
     }
 }
 
-async function handleOfferOrAnswer(description, isOffer) {
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(description));
-        console.log('Set remote description');
-
-        if (isOffer) {
-            console.log('Creating answer');
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            console.log('Set local description (answer)');
-            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-        }
-    } catch (error) {
-        console.error('Error handling offer/answer:', error);
-    }
+function handleOfferOrAnswer(description, isOffer) {
+    console.log(`Handling ${isOffer ? 'offer' : 'answer'}:`, description);
+    peerConnection.setRemoteDescription(new RTCSessionDescription(description))
+        .then(() => {
+            console.log('Set remote description successfully');
+            if (isOffer) {
+                console.log('Creating answer');
+                return peerConnection.createAnswer();
+            }
+        })
+        .then(answer => {
+            if (answer) {
+                console.log('Setting local description (answer)');
+                return peerConnection.setLocalDescription(answer);
+            }
+        })
+        .then(() => {
+            if (isOffer) {
+                console.log('Sending answer');
+                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+            }
+        })
+        .catch(error => console.error('Error in handleOfferOrAnswer:', error));
 }
 
 function handleNewICECandidate(candidate) {
-    console.log('Adding received ICE candidate');
+    console.log('Received ICE candidate:', candidate);
     peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-        .catch(error => console.error('Error adding received ICE candidate', error));
+        .then(() => console.log('Added ICE candidate successfully'))
+        .catch(error => console.error('Error adding ICE candidate:', error));
 }
 
 function handleICECandidate(event) {
     if (event.candidate) {
-        console.log('New ICE candidate:', event.candidate.type);
+        console.log('Sending ICE candidate:', event.candidate);
         sendMessage({ type: 'candidate', candidate: event.candidate });
     } else {
         console.log('All ICE candidates have been sent');
@@ -340,10 +354,14 @@ function handleICECandidate(event) {
 
 function handleTrack(event) {
     console.log('Received remote track:', event.track.kind);
+    console.log('Remote streams:', event.streams);
     if (remoteVideo.srcObject !== event.streams[0]) {
         remoteVideo.srcObject = event.streams[0];
         console.log('Set remote video source');
+        event.streams[0].onaddtrack = (e) => console.log('New track added to remote stream:', e.track.kind);
     }
+    remoteVideo.onloadedmetadata = () => console.log('Remote video metadata loaded');
+    remoteVideo.onplay = () => console.log('Remote video started playing');
 }
 
 // Chat Functions
