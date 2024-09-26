@@ -37,8 +37,7 @@ let username = '';
 let socket;
 let socketReady = false;
 let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
-const reconnectInterval = 5000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 let heartbeatInterval;
 let intentionalDisconnect = false; // Added flag to track intentional disconnects
 
@@ -103,65 +102,25 @@ async function initializeChat() {
 async function initializeConnection() {
     console.log('Initializing connection');
     try {
-        await checkMediaDevices();
-        
-        // Try to get video only
+        const constraints = { video: true, audio: true };
         try {
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            console.log('Video stream acquired successfully');
-            handleStream(videoStream, 'video');
-        } catch (videoError) {
-            console.error('Error getting video stream:', videoError);
-        }
-        
-        // Try to get audio only
-        try {
-            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-            console.log('Audio stream acquired successfully');
-            handleStream(audioStream, 'audio');
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (audioError) {
-            console.error('Error getting audio stream:', audioError);
+            console.warn('Audio device not found, trying video only');
+            constraints.audio = false;
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
         }
         
-        // Start the WebSocket connection
+        localVideo.srcObject = localStream;
+        console.log('Local stream set up successfully');
+        console.log('Local stream tracks:', localStream.getTracks().map(t => t.kind));
+        
+        // Start the WebSocket connection after getting the local stream
         setupWebSocket();
     } catch (error) {
-        console.error('Error in initializeConnection:', error);
+        console.error('Error setting up local stream:', error);
         handleMediaError(error);
     }
-}
-
-function handleStream(stream, type) {
-    if (type === 'video' || type === 'audio') {
-        if (!localStream) {
-            localStream = new MediaStream();
-        }
-        stream.getTracks().forEach(track => {
-            localStream.addTrack(track);
-        });
-        if (type === 'video' && localVideo) {
-            localVideo.srcObject = localStream;
-        }
-        console.log(`Added ${type} track to localStream`);
-    }
-}
-
-function checkMediaDevices() {
-    return navigator.mediaDevices.enumerateDevices()
-        .then(devices => {
-            const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            const audioDevices = devices.filter(device => device.kind === 'audioinput');
-            
-            console.log('Available video devices:', videoDevices.length);
-            console.log('Available audio devices:', audioDevices.length);
-            
-            videoDevices.forEach(device => console.log('Video device:', device.label || 'Label not available'));
-            audioDevices.forEach(device => console.log('Audio device:', device.label || 'Label not available'));
-            
-            if (videoDevices.length === 0 && audioDevices.length === 0) {
-                throw new Error('No media devices found');
-            }
-        });
 }
 
 function handleMediaError(error) {
@@ -305,12 +264,20 @@ function setupWebSocket() {
     
     socket.onopen = () => {
         console.log('WebSocket connected');
+        reconnectAttempts = 0;
         // Send any necessary initialization messages
+        sendMessage({ type: 'ready', username: username });
     };
     
     socket.onclose = (event) => {
         console.log('WebSocket disconnected, attempting to reconnect...');
-        setTimeout(setupWebSocket, 5000); // Attempt to reconnect after 5 seconds
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            setTimeout(setupWebSocket, 5000);
+            reconnectAttempts++;
+        } else {
+            console.error('Max reconnection attempts reached');
+            updateUIConnectionState('Connection failed');
+        }
     };
     
     socket.onerror = (error) => {
@@ -348,7 +315,7 @@ function handleIncomingMessage(event) {
             updateUIConnectionState('Waiting for peer...');
             break;
         case 'paired':
-            updateUIConnectionState('Connected');
+            updateUIConnectionState('Connected to peer');
             startConnection(data.isOfferer);
             break;
         case 'offer':
@@ -383,15 +350,38 @@ function updateUIConnectionState(state) {
 
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
+    console.log('Starting connection, isOfferer:', isOfferer);
     createPeerConnection();
+    
     if (isOfferer) {
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            })
-            .catch(error => console.error('Error creating offer:', error));
+        createAndSendOffer();
     }
+}
+
+function createPeerConnection() {
+    peerConnection = new RTCPeerConnection(configuration);
+    
+    peerConnection.onicecandidate = handleICECandidate;
+    peerConnection.ontrack = handleTrack;
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+    };
+
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    console.log('Peer connection created');
+}
+
+function createAndSendOffer() {
+    peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+            console.log('Sending offer');
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        })
+        .catch(error => console.error('Error creating offer:', error));
 }
 
 function handleOfferOrAnswer(description, isOffer) {
@@ -414,15 +404,15 @@ function handleOfferOrAnswer(description, isOffer) {
         .catch(error => console.error('Error handling offer/answer:', error));
 }
 
-function handleIceCandidate(candidate) {
-    console.log('Handling ICE candidate:', JSON.stringify(candidate));
+function handleIceCandidate(event) {
+    console.log('Handling ICE candidate:', JSON.stringify(event.candidate));
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-        peerConnection.addIceCandidate(candidate)
+        peerConnection.addIceCandidate(event.candidate)
             .then(() => console.log('ICE candidate added successfully'))
             .catch(e => console.error('Error adding received ice candidate', e));
     } else {
         console.log('Queueing ICE candidate');
-        iceCandidatesQueue.push(candidate);
+        iceCandidatesQueue.push(event.candidate);
     }
 }
 
@@ -714,3 +704,4 @@ function checkRelayConnection() {
 // Call this function periodically
 setInterval(checkConnectionStatus, 30000);
 setInterval(checkRelayConnection, 30000);
+
