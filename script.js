@@ -177,8 +177,8 @@ function createPeerConnection() {
             peerConnection.oniceconnectionstatechange = () => {
                 console.log('ICE connection state:', peerConnection.iceConnectionState);
                 if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
-                    console.log('ICE connected, forcing video play');
-                    forcePlayRemoteVideo();
+                    console.log('ICE connected, attempting to play remote video');
+                    playRemoteVideo();
                 }
             };
             peerConnection.onsignalingstatechange = () => {
@@ -296,7 +296,8 @@ function handleIncomingMessage(event) {
             // Handle pong (if needed)
             break;
         case 'partnerDisconnected':
-            handlePartnerDisconnect();
+            console.log('Partner disconnected');
+            handlePeerDisconnection();
             break;
         default:
             console.warn('Unknown message type:', data.type);
@@ -395,9 +396,7 @@ function handleTrack(event) {
             console.log('Set remote video source');
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
-                remoteVideo.play().then(() => {
-                    console.log('Remote video playing successfully');
-                }).catch(e => console.error('Error playing remote video:', e));
+                playRemoteVideo();
             };
         } else {
             console.error('Remote video element not found');
@@ -522,35 +521,15 @@ function notifyAudioStateChange() {
 }
 
 // Connection Control Functions
-function handlePartnerDisconnect() {
-    if (!isConnectedToPeer) return;
-    isConnectedToPeer = false;
-    console.log('Handling partner disconnect');
-
+function handlePeerDisconnection() {
     if (peerConnection) {
-        peerConnection.ontrack = null;
-        peerConnection.onicecandidate = null;
-        peerConnection.oniceconnectionstatechange = null;
-        peerConnection.onsignalingstatechange = null;
-        peerConnection.onnegotiationneeded = null;
-
         peerConnection.close();
         peerConnection = null;
     }
     if (remoteVideo) {
-        if (remoteVideo.srcObject) {
-            remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-            remoteVideo.srcObject = null;
-        }
+        remoteVideo.srcObject = null;
     }
-    // Reset blur state
-    remoteWantsBlurOff = false;
-    updateBlurState();
-    console.log('Disconnected from peer');
-
-    // Automatically attempt to find a new partner
-    intentionalDisconnect = false; // Ensure the flag is false
-    sendMessage({ type: 'ready' });
+    updateUIConnectionState('Disconnected');
 }
 
 function handleNext() {
@@ -558,7 +537,7 @@ function handleNext() {
     clearChat();
     resetBlurState();
     sendMessage({ type: 'next' });
-    handlePartnerDisconnect();
+    handlePeerDisconnection();
     // Do not close the WebSocket
 }
 
@@ -567,7 +546,7 @@ function handleDisconnect() {
     clearChat();
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
-    handlePartnerDisconnect();
+    handlePeerDisconnection();
     if (socket) socket.close(); // Close the WebSocket only on full disconnect
 }
 
@@ -714,20 +693,16 @@ function checkRemoteVideoState() {
 // Call this function every 5 seconds
 setInterval(checkRemoteVideoState, 5000);
 
-function tryPlayRemoteVideo() {
-    if (remoteVideo.paused) {
+function playRemoteVideo() {
+    if (remoteVideo && remoteVideo.paused) {
         remoteVideo.play().then(() => {
-            console.log('Remote video play() succeeded');
-        }).catch(error => {
-            console.error('Remote video play() failed:', error);
-        });
-    } else {
-        console.log('Remote video is already playing');
+            console.log('Remote video playing successfully');
+        }).catch(e => console.error('Error playing remote video:', e));
     }
 }
 
 // Call this function a few seconds after the peer connection is established
-setTimeout(tryPlayRemoteVideo, 5000);
+setTimeout(playRemoteVideo, 5000);
 
 function checkVideoStatus() {
     console.log('Video ready state:', remoteVideo.readyState);
