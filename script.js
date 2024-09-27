@@ -261,27 +261,23 @@ function handleIncomingMessage(event) {
     console.log('Received message:', data);
 
     switch (data.type) {
-        case 'paired':
-            console.log('Paired with peer, isOfferer:', data.isOfferer);
-            updateUIConnectionState('Connected to peer');
-            cleanupConnection(); // Clean up any existing connection
-            startConnection(data.isOfferer);
-            break;
         case 'offer':
             console.log('Received offer');
-            if (!peerConnection) {
-                startConnection(false);
-            }
             handleOfferOrAnswer(data.offer, true);
-            // Create data channel for the answerer
-            createDataChannel();
+            // The answerer doesn't create a data channel, but waits for one
+            peerConnection.ondatachannel = (event) => {
+                console.log('Received data channel from offerer');
+                dataChannel = event.channel;
+                setupDataChannel(dataChannel);
+            };
             break;
         case 'answer':
             console.log('Received answer');
-            if (peerConnection) {
-                handleOfferOrAnswer(data.answer, false);
-            } else {
-                console.error('Received answer but no peer connection exists');
+            handleOfferOrAnswer(data.answer, false);
+            // The offerer creates the data channel
+            if (!dataChannel) {
+                console.log('Creating data channel (offerer)');
+                createDataChannel();
             }
             break;
         case 'candidate':
@@ -554,6 +550,7 @@ function sendBlurRemovalRequest() {
     } else {
         console.error('Data channel is not open. Cannot send blur removal request.');
         console.log('Data channel:', dataChannel);
+        blurRemovalPending = true;
     }
 }
 
