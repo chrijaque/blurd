@@ -263,13 +263,14 @@ function sendMessage(message) {
     }
 }
 
-function handleIncomingMessage(event) {
+async function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
 
     switch (data.type) {
         case 'paired':
             console.log('Paired with peer, isOfferer:', data.isOfferer);
+            await initializeConnection();
             startConnection(data.isOfferer);
             break;
         case 'offer':
@@ -317,9 +318,13 @@ function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
     peerConnection = createPeerConnection();
     
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    } else {
+        console.error('Local stream is not available');
+    }
 
     if (isOfferer) {
         console.log('Creating data channel (offerer)');
