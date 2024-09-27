@@ -274,11 +274,11 @@ function handleIncomingMessage(event) {
             break;
         case 'offer':
             console.log('Received offer');
-            handleOfferOrAnswer(data.offer, true);
+            handleOfferMessage(data.offer);
             break;
         case 'answer':
             console.log('Received answer');
-            handleOfferOrAnswer(data.answer, false);
+            handleAnswerMessage(data.answer);
             break;
         case 'candidate':
             console.log('Received ICE candidate');
@@ -322,8 +322,16 @@ function startConnection(isOfferer) {
     });
 
     if (isOfferer) {
-        createDataChannel();
+        console.log('Creating data channel (offerer)');
+        dataChannel = peerConnection.createDataChannel('chat');
+        setupDataChannel(dataChannel);
         createAndSendOffer();
+    } else {
+        peerConnection.ondatachannel = (event) => {
+            console.log('Received data channel from offerer');
+            dataChannel = event.channel;
+            setupDataChannel(dataChannel);
+        };
     }
 }
 
@@ -336,32 +344,22 @@ function createAndSendOffer() {
         .catch(error => console.error('Error creating offer:', error));
 }
 
-function handleOfferOrAnswer(sessionDescription, isOffer) {
-    console.log(`Handling ${isOffer ? 'offer' : 'answer'}:`, sessionDescription);
-    peerConnection.setRemoteDescription(new RTCSessionDescription(sessionDescription))
+function handleOfferMessage(offer) {
+    if (!peerConnection) {
+        startConnection(false);
+    }
+    peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+        .then(() => peerConnection.createAnswer())
+        .then(answer => peerConnection.setLocalDescription(answer))
         .then(() => {
-            console.log(`Set remote description successfully (${isOffer ? 'offer' : 'answer'})`);
-            if (isOffer) {
-                console.log('Creating answer');
-                return peerConnection.createAnswer();
-            }
+            sendMessage({ type: 'answer', answer: peerConnection.localDescription });
         })
-        .then(answer => {
-            if (answer) {
-                console.log('Setting local description (answer)');
-                return peerConnection.setLocalDescription(answer);
-            }
-        })
-        .then(() => {
-            if (isOffer) {
-                console.log('Sending answer');
-                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-            }
-        })
-        .catch(error => {
-            console.error(`Error in handleOfferOrAnswer: ${error.name}: ${error.message}`);
-            cleanupConnection();
-        });
+        .catch(error => console.error('Error handling offer:', error));
+}
+
+function handleAnswerMessage(answer) {
+    peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+        .catch(error => console.error('Error handling answer:', error));
 }
 
 function handleNewICECandidate(candidate) {
