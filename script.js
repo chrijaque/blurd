@@ -165,30 +165,38 @@ const configuration = {
 
 function createPeerConnection() {
     console.log('Creating peer connection');
+    if (peerConnection) {
+        console.log('Closing existing peer connection');
+        peerConnection.close();
+    }
     try {
-        const pc = new RTCPeerConnection(configuration);
-        console.log('Peer connection created successfully:', pc);
+        peerConnection = new RTCPeerConnection(configuration);
+        console.log('Peer connection created successfully:', peerConnection);
 
-        pc.onicecandidate = handleICECandidate;
-        pc.ontrack = handleTrack;
-        pc.oniceconnectionstatechange = () => {
-            console.log('ICE connection state changed:', pc.iceConnectionState);
-            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        peerConnection.onicecandidate = handleICECandidate;
+        peerConnection.ontrack = handleTrack;
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE connection state changed:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
                 console.log('ICE connected, attempting to play remote video');
                 playRemoteVideo();
-            } else if (pc.iceConnectionState === 'failed') {
-                console.log('ICE connection failed, attempting restart');
-                restartIce();
+            } else if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed' || peerConnection.iceConnectionState === 'closed') {
+                console.log('ICE connection lost, cleaning up');
+                cleanupConnection();
             }
         };
-        pc.onsignalingstatechange = () => {
-            console.log('Signaling state changed:', pc.signalingState);
+        peerConnection.onsignalingstatechange = () => {
+            console.log('Signaling state changed:', peerConnection.signalingState);
         };
-        pc.onconnectionstatechange = () => {
-            console.log('Connection state changed:', pc.connectionState);
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Connection state changed:', peerConnection.connectionState);
+            if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'closed') {
+                console.log('Connection lost, cleaning up');
+                cleanupConnection();
+            }
         };
 
-        return pc;
+        return peerConnection;
     } catch (error) {
         console.error('Error creating peer connection:', error);
         return null;
@@ -250,6 +258,7 @@ function handleIncomingMessage(event) {
         case 'paired':
             console.log('Paired with peer, isOfferer:', data.isOfferer);
             updateUIConnectionState('Connected to peer');
+            cleanupConnection(); // Clean up any existing connection
             startConnection(data.isOfferer);
             break;
         case 'offer':
@@ -283,7 +292,7 @@ function handleIncomingMessage(event) {
             break;
         case 'partnerDisconnected':
             console.log('Partner disconnected');
-            handlePeerDisconnection();
+            cleanupConnection();
             break;
         case 'waiting':
             console.log('Server indicates waiting for a peer.');
@@ -311,28 +320,26 @@ function startConnection(isOfferer) {
         console.error('Failed to create peer connection');
         return;
     }
-    peerConnection = pc;  // Assign to the global variable after creation
+    
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            console.log('Adding local track to peer connection:', track.kind);
+            pc.addTrack(track, localStream);
+        });
+    } else {
+        console.warn('No local stream available when starting connection');
+    }
 
     if (isOfferer) {
-        // Add local tracks only if you are the offerer
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                console.log('Adding local track to peer connection:', track.kind);
-                peerConnection.addTrack(track, localStream);
-            });
-        } else {
-            console.warn('No local stream available when starting connection');
-        }
-
         console.log('Creating offer');
-        peerConnection.createOffer()
+        pc.createOffer()
             .then(offer => {
                 console.log('Setting local description (offer)');
-                return peerConnection.setLocalDescription(offer);
+                return pc.setLocalDescription(offer);
             })
             .then(() => {
                 console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+                sendMessage({ type: 'offer', offer: pc.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
     }
@@ -547,8 +554,13 @@ function notifyAudioStateChange() {
 }
 
 // Connection Control Functions
-function handlePeerDisconnection() {
+function cleanupConnection() {
     if (peerConnection) {
+        peerConnection.ontrack = null;
+        peerConnection.onicecandidate = null;
+        peerConnection.oniceconnectionstatechange = null;
+        peerConnection.onsignalingstatechange = null;
+        peerConnection.onconnectionstatechange = null;
         peerConnection.close();
         peerConnection = null;
     }
@@ -563,7 +575,7 @@ function handleNext() {
     clearChat();
     resetBlurState();
     sendMessage({ type: 'next' });
-    handlePeerDisconnection();
+    cleanupConnection();
     // Do not close the WebSocket
 }
 
@@ -572,7 +584,7 @@ function handleDisconnect() {
     clearChat();
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
-    handlePeerDisconnection();
+    cleanupConnection();
     if (socket) socket.close(); // Close the WebSocket only on full disconnect
 }
 
@@ -734,4 +746,15 @@ function checkVideoStatus() {
 }
 
 setInterval(checkVideoStatus, 5000);
+
+function logActivePeerConnections() {
+    if (typeof RTCPeerConnection !== 'undefined') {
+        console.log('Active RTCPeerConnections:', RTCPeerConnection.generateCertificate ? RTCPeerConnection.generateCertificate.length : 'Unknown');
+    } else {
+        console.log('RTCPeerConnection is not supported in this browser');
+    }
+}
+
+// Call this function every 10 seconds
+setInterval(logActivePeerConnections, 10000);
 
