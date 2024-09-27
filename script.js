@@ -482,42 +482,106 @@ function resetBlurState() {
     localWantsBlurOff = false;
     remoteWantsBlurOff = false;
     updateBlurState();
+    if (removeBlurButton) {
+        removeBlurButton.style.backgroundColor = '';
+        removeBlurButton.textContent = 'Remove Blur';
+        removeBlurButton.disabled = false;
+        removeBlurButton.onclick = toggleBlur;
+    }
 }
 
 function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
 
-    localVideo.style.filter = localWantsBlurOff ? 'none' : 'blur(10px)';
-    remoteVideo.style.filter = remoteWantsBlurOff ? 'none' : 'blur(10px)';
-
-    // Update the button text
-    if (removeBlurButton) {
-        removeBlurButton.textContent = localWantsBlurOff ? 'Enable Blur' : 'Remove Blur';
-    }
+    localVideo.style.filter = localWantsBlurOff && remoteWantsBlurOff ? 'none' : 'blur(10px)';
+    remoteVideo.style.filter = localWantsBlurOff && remoteWantsBlurOff ? 'none' : 'blur(10px)';
 
     console.log('Blur state updated');
 }
 
 function toggleBlur() {
     console.log('Toggle blur called');
-    if (!removeBlurButton || removeBlurButton.disabled || !peerConnection || !dataChannel || dataChannel.readyState !== 'open') {
-        console.log('Remove blur button is disabled, not found, or data channel not ready');
+    if (!removeBlurButton || !peerConnection || !dataChannel || dataChannel.readyState !== 'open') {
+        console.error('Remove blur button not found, or data channel not ready');
         return;
     }
-    localWantsBlurOff = !localWantsBlurOff;
-    console.log('Local wants blur off:', localWantsBlurOff);
-    updateBlurState();
-    sendBlurState();
+    
+    if (localWantsBlurOff) {
+        // If we already requested blur removal, do nothing
+        console.log('Blur removal already requested');
+        return;
+    }
+    
+    localWantsBlurOff = true;
+    removeBlurButton.textContent = 'Awaiting Partner';
+    removeBlurButton.style.backgroundColor = 'blue';
+    removeBlurButton.disabled = true;
+    
+    // Send blur removal request to peer
+    sendBlurRemovalRequest();
+    
+    // Add message to chat
+    addMessageToChat('You requested to remove blur', 'System');
+    
+    console.log('Blur removal requested');
 }
 
-function sendBlurState() {
+function sendBlurRemovalRequest() {
     if (dataChannel && dataChannel.readyState === 'open') {
-        const message = JSON.stringify({ type: 'blurState', blurState: localWantsBlurOff });
+        const message = JSON.stringify({ type: 'blurRemovalRequest' });
         dataChannel.send(message);
-        console.log('Sent blur state:', message);
+        console.log('Sent blur removal request');
     } else {
-        console.log('Data channel is not open. Cannot send blur state.');
+        console.error('Data channel is not open. Cannot send blur removal request.');
+    }
+}
+
+function handleBlurRemovalRequest() {
+    console.log('Received blur removal request');
+    addMessageToChat('Your partner requested to remove blur', 'System');
+    removeBlurButton.style.backgroundColor = 'green';
+    removeBlurButton.textContent = 'Accept Remove Blur';
+    removeBlurButton.onclick = acceptBlurRemoval;
+}
+
+function acceptBlurRemoval() {
+    console.log('Accepting blur removal');
+    remoteWantsBlurOff = true;
+    localWantsBlurOff = true;
+    updateBlurState();
+    sendBlurRemovalResponse(true);
+    removeBlurButton.style.backgroundColor = '';
+    removeBlurButton.textContent = 'Blur Removed';
+    removeBlurButton.disabled = true;
+    addMessageToChat('You accepted the blur removal request', 'System');
+}
+
+function sendBlurRemovalResponse(accepted) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+        const message = JSON.stringify({ type: 'blurRemovalResponse', accepted });
+        dataChannel.send(message);
+        console.log('Sent blur removal response:', accepted);
+    } else {
+        console.error('Data channel is not open. Cannot send blur removal response.');
+    }
+}
+
+function handleBlurRemovalResponse(accepted) {
+    console.log('Received blur removal response:', accepted);
+    if (accepted) {
+        remoteWantsBlurOff = true;
+        updateBlurState();
+        removeBlurButton.style.backgroundColor = '';
+        removeBlurButton.textContent = 'Blur Removed';
+        removeBlurButton.disabled = true;
+        addMessageToChat('Your partner accepted the blur removal request', 'System');
+    } else {
+        localWantsBlurOff = false;
+        removeBlurButton.style.backgroundColor = '';
+        removeBlurButton.textContent = 'Remove Blur';
+        removeBlurButton.disabled = false;
+        addMessageToChat('Your partner declined the blur removal request', 'System');
     }
 }
 
