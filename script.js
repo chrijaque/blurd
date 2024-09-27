@@ -322,9 +322,14 @@ function startConnection(isOfferer) {
     }
     
     if (localStream) {
+        const senders = pc.getSenders();
         localStream.getTracks().forEach(track => {
-            console.log('Adding local track to peer connection:', track.kind);
-            pc.addTrack(track, localStream);
+            if (!senders.find(sender => sender.track === track)) {
+                console.log('Adding local track to peer connection:', track.kind);
+                pc.addTrack(track, localStream);
+            } else {
+                console.log('Track already added:', track.kind);
+            }
         });
     } else {
         console.warn('No local stream available when starting connection');
