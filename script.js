@@ -197,10 +197,17 @@ function createPeerConnection() {
         };
 
         peerConnection.ondatachannel = (event) => {
-            console.log('Received data channel');
+            console.log('Received data channel from peer');
             dataChannel = event.channel;
             setupDataChannel(dataChannel);
         };
+
+        // For the offerer
+        if (!dataChannel) {
+            console.log('Creating data channel (offerer)');
+            dataChannel = peerConnection.createDataChannel('chat');
+            setupDataChannel(dataChannel);
+        }
 
         return peerConnection;
     } catch (error) {
@@ -264,21 +271,10 @@ function handleIncomingMessage(event) {
         case 'offer':
             console.log('Received offer');
             handleOfferOrAnswer(data.offer, true);
-            // The answerer doesn't create a data channel, but waits for one
-            peerConnection.ondatachannel = (event) => {
-                console.log('Received data channel from offerer');
-                dataChannel = event.channel;
-                setupDataChannel(dataChannel);
-            };
             break;
         case 'answer':
             console.log('Received answer');
             handleOfferOrAnswer(data.answer, false);
-            // The offerer creates the data channel
-            if (!dataChannel) {
-                console.log('Creating data channel (offerer)');
-                createDataChannel();
-            }
             break;
         case 'candidate':
             console.log('Received ICE candidate');
@@ -343,9 +339,6 @@ function startConnection(isOfferer) {
                 sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
-
-        console.log('Creating data channel (offerer)');
-        createDataChannel();
     }
 }
 
@@ -508,6 +501,7 @@ function updateBlurState() {
 }
 
 let blurRemovalPending = false;
+let blurRemovalRequestQueued = false;
 
 function toggleBlur() {
     console.log('Toggle blur called');
@@ -516,41 +510,35 @@ function toggleBlur() {
         return;
     }
     
-    if (localWantsBlurOff || blurRemovalPending) {
-        console.log('Blur removal already requested or pending');
+    if (localWantsBlurOff || blurRemovalRequestQueued) {
+        console.log('Blur removal already requested or queued');
         return;
     }
     
-    blurRemovalPending = true;
     removeBlurButton.textContent = 'Awaiting Partner';
     removeBlurButton.style.backgroundColor = 'blue';
     removeBlurButton.disabled = true;
     
-    // Add message to chat
     addMessageToChat('You requested to remove blur', 'system');
-    
-    console.log('Blur removal requested');
     
     if (dataChannel && dataChannel.readyState === 'open') {
         sendBlurRemovalRequest();
     } else {
         console.log('Data channel not ready, queuing blur removal request');
+        blurRemovalRequestQueued = true;
     }
 }
 
 function sendBlurRemovalRequest() {
     console.log('Attempting to send blur removal request');
-    console.log('Data channel state:', dataChannel ? dataChannel.readyState : 'No data channel');
     if (dataChannel && dataChannel.readyState === 'open') {
         const message = JSON.stringify({ type: 'blurRemovalRequest' });
         dataChannel.send(message);
         console.log('Sent blur removal request:', message);
         localWantsBlurOff = true;
-        blurRemovalPending = false;
     } else {
         console.error('Data channel is not open. Cannot send blur removal request.');
-        console.log('Data channel:', dataChannel);
-        blurRemovalPending = true;
+        blurRemovalRequestQueued = true;
     }
 }
 
