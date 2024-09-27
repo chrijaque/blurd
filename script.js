@@ -443,6 +443,7 @@ function setupChat() {
     toggleAudioButton.addEventListener('click', toggleAudio);
     nextButton.addEventListener('click', handleNext);
     disconnectButton.addEventListener('click', handleDisconnect);
+    setupBlurEffect();
 }
 
 function sendChatMessage() {
@@ -478,6 +479,7 @@ function clearChat() {
 }
 
 function resetBlurState() {
+    localWantsBlurOff = false;
     remoteWantsBlurOff = false;
     updateBlurState();
 }
@@ -486,16 +488,12 @@ function updateBlurState() {
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
 
-    if (localWantsBlurOff) {
-        localVideo.style.filter = 'none';
-    } else {
-        localVideo.style.filter = 'blur(10px)';
-    }
+    localVideo.style.filter = localWantsBlurOff ? 'none' : 'blur(10px)';
+    remoteVideo.style.filter = remoteWantsBlurOff ? 'none' : 'blur(10px)';
 
-    if (remoteWantsBlurOff) {
-        remoteVideo.style.filter = 'none';
-    } else {
-        remoteVideo.style.filter = 'blur(10px)';
+    // Update the button text
+    if (removeBlurButton) {
+        removeBlurButton.textContent = localWantsBlurOff ? 'Enable Blur' : 'Remove Blur';
     }
 
     console.log('Blur state updated');
@@ -572,6 +570,7 @@ function handleNext() {
 function handleDisconnect() {
     console.log('Disconnect button clicked');
     clearChat();
+    resetBlurState();
     intentionalDisconnect = true;
     sendMessage({ type: 'disconnected' });
     cleanupConnection();
