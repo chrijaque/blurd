@@ -268,6 +268,10 @@ function handleIncomingMessage(event) {
     console.log('Received message:', data);
 
     switch (data.type) {
+        case 'paired':
+            console.log('Paired with peer, isOfferer:', data.isOfferer);
+            startConnection(data.isOfferer);
+            break;
         case 'offer':
             console.log('Received offer');
             handleOfferOrAnswer(data.offer, true);
@@ -311,35 +315,25 @@ function updateUIConnectionState(state) {
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
-    cleanupConnection(); // Ensure we start with a clean slate
     peerConnection = createPeerConnection();
-    if (!peerConnection) {
-        console.error('Failed to create peer connection');
-        return;
-    }
     
-    if (localStream) {
-        localStream.getTracks().forEach(track => {
-            console.log('Adding local track to peer connection:', track.kind);
-            peerConnection.addTrack(track, localStream);
-        });
-    } else {
-        console.warn('No local stream available when starting connection');
-    }
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
 
     if (isOfferer) {
-        console.log('Creating offer');
-        peerConnection.createOffer()
-            .then(offer => {
-                console.log('Setting local description (offer)');
-                return peerConnection.setLocalDescription(offer);
-            })
-            .then(() => {
-                console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
-            })
-            .catch(error => console.error('Error creating offer:', error));
+        createDataChannel();
+        createAndSendOffer();
     }
+}
+
+function createAndSendOffer() {
+    peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+            sendMessage({ type: 'offer', offer: peerConnection.localDescription });
+        })
+        .catch(error => console.error('Error creating offer:', error));
 }
 
 function handleOfferOrAnswer(sessionDescription, isOffer) {
