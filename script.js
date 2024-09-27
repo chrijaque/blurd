@@ -264,13 +264,9 @@ function handleIncomingMessage(event) {
         case 'offer':
             console.log('Received offer');
             if (!peerConnection) {
-                peerConnection = createPeerConnection();
+                startConnection(false);
             }
-            if (peerConnection) {
-                handleOfferOrAnswer(data.offer, true);
-            } else {
-                console.error('Failed to create peer connection for offer');
-            }
+            handleOfferOrAnswer(data.offer, true);
             break;
         case 'answer':
             console.log('Received answer');
@@ -315,21 +311,17 @@ function updateUIConnectionState(state) {
 // Peer Connection and RTC Functions
 function startConnection(isOfferer) {
     console.log('Starting connection, isOfferer:', isOfferer);
-    const pc = createPeerConnection();
-    if (!pc) {
+    cleanupConnection(); // Ensure we start with a clean slate
+    peerConnection = createPeerConnection();
+    if (!peerConnection) {
         console.error('Failed to create peer connection');
         return;
     }
     
     if (localStream) {
-        const senders = pc.getSenders();
         localStream.getTracks().forEach(track => {
-            if (!senders.find(sender => sender.track === track)) {
-                console.log('Adding local track to peer connection:', track.kind);
-                pc.addTrack(track, localStream);
-            } else {
-                console.log('Track already added:', track.kind);
-            }
+            console.log('Adding local track to peer connection:', track.kind);
+            peerConnection.addTrack(track, localStream);
         });
     } else {
         console.warn('No local stream available when starting connection');
@@ -337,55 +329,45 @@ function startConnection(isOfferer) {
 
     if (isOfferer) {
         console.log('Creating offer');
-        pc.createOffer()
+        peerConnection.createOffer()
             .then(offer => {
                 console.log('Setting local description (offer)');
-                return pc.setLocalDescription(offer);
+                return peerConnection.setLocalDescription(offer);
             })
             .then(() => {
                 console.log('Sending offer');
-                sendMessage({ type: 'offer', offer: pc.localDescription });
+                sendMessage({ type: 'offer', offer: peerConnection.localDescription });
             })
             .catch(error => console.error('Error creating offer:', error));
     }
 }
 
-function handleOfferOrAnswer(description, isOffer) {
-    console.log(`Handling ${isOffer ? 'offer' : 'answer'}:`, description);
-    if (peerConnection) {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(description))
-            .then(() => {
-                console.log('Set remote description successfully');
-                if (isOffer) {
-                    // Add local tracks here (only for answerer)
-                    if (localStream) {
-                        localStream.getTracks().forEach(track => {
-                            console.log('Adding local track to peer connection:', track.kind);
-                            peerConnection.addTrack(track, localStream);
-                        });
-                    } else {
-                        console.warn('No local stream available when handling offer');
-                    }
-                    console.log('Creating answer');
-                    return peerConnection.createAnswer();
-                }
-            })
-            .then(answer => {
-                if (answer) {
-                    console.log('Setting local description (answer)');
-                    return peerConnection.setLocalDescription(answer);
-                }
-            })
-            .then(() => {
-                if (isOffer) {
-                    console.log('Sending answer');
-                    sendMessage({ type: 'answer', answer: peerConnection.localDescription });
-                }
-            })
-            .catch(error => console.error('Error in handleOfferOrAnswer:', error));
-    } else {
-        console.error('Peer connection not initialized');
-    }
+function handleOfferOrAnswer(sessionDescription, isOffer) {
+    console.log(`Handling ${isOffer ? 'offer' : 'answer'}:`, sessionDescription);
+    peerConnection.setRemoteDescription(new RTCSessionDescription(sessionDescription))
+        .then(() => {
+            console.log(`Set remote description successfully (${isOffer ? 'offer' : 'answer'})`);
+            if (isOffer) {
+                console.log('Creating answer');
+                return peerConnection.createAnswer();
+            }
+        })
+        .then(answer => {
+            if (answer) {
+                console.log('Setting local description (answer)');
+                return peerConnection.setLocalDescription(answer);
+            }
+        })
+        .then(() => {
+            if (isOffer) {
+                console.log('Sending answer');
+                sendMessage({ type: 'answer', answer: peerConnection.localDescription });
+            }
+        })
+        .catch(error => {
+            console.error(`Error in handleOfferOrAnswer: ${error.name}: ${error.message}`);
+            cleanupConnection();
+        });
 }
 
 function handleNewICECandidate(candidate) {
@@ -422,9 +404,8 @@ function handleTrack(event) {
             remoteVideo.onloadedmetadata = () => {
                 console.log('Remote video metadata loaded');
                 console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-                remoteVideo.play().then(() => {
-                    console.log('Remote video playing successfully');
-                }).catch(e => console.error('Error playing remote video:', e));
+                // Instead of immediately playing, we'll wait a short time
+                setTimeout(playRemoteVideo, 100);
             };
             remoteVideo.onerror = (e) => console.error('Remote video error:', e);
             
@@ -561,6 +542,9 @@ function notifyAudioStateChange() {
 // Connection Control Functions
 function cleanupConnection() {
     if (peerConnection) {
+        peerConnection.getSenders().forEach(sender => {
+            peerConnection.removeTrack(sender);
+        });
         peerConnection.ontrack = null;
         peerConnection.onicecandidate = null;
         peerConnection.oniceconnectionstatechange = null;
@@ -570,6 +554,7 @@ function cleanupConnection() {
         peerConnection = null;
     }
     if (remoteVideo) {
+        remoteVideo.pause();
         remoteVideo.srcObject = null;
     }
     updateUIConnectionState('Disconnected');
@@ -729,9 +714,22 @@ setInterval(checkRemoteVideoState, 5000);
 
 function playRemoteVideo() {
     if (remoteVideo && remoteVideo.paused) {
+        console.log('Attempting to play remote video');
         remoteVideo.play().then(() => {
-            console.log('Forced remote video to play');
-        }).catch(e => console.error('Error forcing remote video to play:', e));
+            console.log('Remote video playing successfully');
+        }).catch(e => {
+            console.error('Error playing remote video:', e.name, e.message);
+            if (e.name === 'NotAllowedError') {
+                console.log('Autoplay prevented. User interaction required to play video.');
+            } else if (e.name === 'AbortError') {
+                console.log('Play request was interrupted. Retrying in 1 second.');
+                setTimeout(playRemoteVideo, 1000);
+            }
+        });
+    } else if (!remoteVideo) {
+        console.error('Remote video element not found');
+    } else {
+        console.log('Remote video is already playing');
     }
 }
 
@@ -762,4 +760,19 @@ function logActivePeerConnections() {
 
 // Call this function every 10 seconds
 setInterval(logActivePeerConnections, 10000);
+
+function logPeerConnectionState() {
+    if (peerConnection) {
+        console.log('Peer Connection State:', peerConnection.connectionState);
+        console.log('ICE Connection State:', peerConnection.iceConnectionState);
+        console.log('Signaling State:', peerConnection.signalingState);
+        console.log('Number of senders:', peerConnection.getSenders().length);
+        console.log('Number of receivers:', peerConnection.getReceivers().length);
+    } else {
+        console.log('No active peer connection');
+    }
+}
+
+// Call this function every 5 seconds
+setInterval(logPeerConnectionState, 5000);
 
