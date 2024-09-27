@@ -139,7 +139,7 @@ wss.on('connection', (ws) => {
                     break;
                 case 'offer':
                 case 'answer':
-                case 'ice-candidate':
+                case 'candidate':
                 case 'blur-preference':
                 case 'chat':
                     if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
