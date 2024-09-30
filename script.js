@@ -365,27 +365,33 @@ function handleOfferMessage(offer) {
         startConnection(false);
     }
     peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
-        .then(() => peerConnection.createAnswer())
+        .then(() => {
+            applyQueuedCandidates(); // Add this line
+            return peerConnection.createAnswer();
+        })
         .then(answer => peerConnection.setLocalDescription(answer))
         .then(() => {
             sendMessage({ type: 'answer', answer: peerConnection.localDescription });
         })
         .catch(error => console.error('Error handling offer:', error));
 }
-
 function handleAnswerMessage(answer) {
     peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+        .then(() => {
+            applyQueuedCandidates(); // Add this line
+        })
         .catch(error => console.error('Error handling answer:', error));
 }
 
 function handleNewICECandidate(candidate) {
     console.log('Received ICE candidate:', candidate);
-    if (peerConnection) {
+    if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
             .then(() => console.log('Added ICE candidate successfully'))
             .catch(error => console.error('Error adding ICE candidate:', error));
     } else {
-        console.error('Peer connection not initialized');
+        iceCandidatesQueue.push(candidate);
+        console.log('ICE candidate queued. Queue length:', iceCandidatesQueue.length);
     }
 }
 
@@ -873,4 +879,12 @@ function setupDataChannel(channel) {
             handleBlurRemovalResponse(message.accepted);
         }
     };
+}
+
+function applyQueuedCandidates() {
+    while (iceCandidatesQueue.length > 0) {
+        const candidate = iceCandidatesQueue.shift();
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(error => console.error('Error adding queued ICE candidate:', error));
+    }
 }
