@@ -260,29 +260,22 @@ function startHeartbeat() {
     }, 15000); // Every 15 seconds
 }
 
-function sendMessage(message) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        message.username = username;
-        socket.send(JSON.stringify(message));
-        console.log('Sent message:', message);
-    } else {
-        console.log('WebSocket not ready. Message not sent:', message);
-    }
-}
+let isConnecting = false;
+let iceCandidateQueue = [];
+let offerQueue = null;
 
-async function handleIncomingMessage(event) {
+function handleIncomingMessage(event) {
     const data = JSON.parse(event.data);
     console.log('Received message:', data);
 
     switch (data.type) {
         case 'paired':
-            console.log('Paired with peer, isOfferer:', data.isOfferer);
-            await initializeConnection();
-            startConnection(data.isOfferer);
-            break;
-        case 'offer':
-            console.log('Received offer');
-            handleOfferMessage(data.offer);
+            if (!isConnecting) {
+                isConnecting = true;
+                initializeConnection(data.isOfferer);
+            } else {
+                console.log('Connection already in progress, ignoring pairing message');
+            }
             break;
         case 'answer':
             console.log('Received answer');
@@ -308,6 +301,34 @@ async function handleIncomingMessage(event) {
             break;
         default:
             console.warn('Unknown message type:', data.type);
+    }
+}
+
+function sendMessage(message) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+    } else {
+        console.log('WebSocket not ready, queueing message:', message);
+        if (message.type === 'candidate') {
+            iceCandidateQueue.push(message.candidate);
+        } else if (message.type === 'offer') {
+            offerQueue = message.offer;
+        }
+    }
+}
+
+function onWebSocketOpen() {
+    console.log('WebSocket connected');
+    sendQueuedMessages();
+}
+
+function sendQueuedMessages() {
+    while (iceCandidateQueue.length > 0) {
+        sendMessage({ type: 'candidate', candidate: iceCandidateQueue.shift() });
+    }
+    if (offerQueue) {
+        sendMessage({ type: 'offer', offer: offerQueue });
+        offerQueue = null;
     }
 }
 
