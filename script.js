@@ -122,7 +122,6 @@ async function initializeConnection() {
         handleMediaError(error);
     }
 }
-
 function handleMediaError(error) {
     let errorMessage = '';
     switch(error.name) {
@@ -208,6 +207,14 @@ function createPeerConnection() {
             dataChannel = peerConnection.createDataChannel('chat');
             setupDataChannel(dataChannel);
         }
+
+        peerConnection.onicegatheringstatechange = () => {
+            console.log('ICE gathering state changed:', peerConnection.iceGatheringState);
+        };
+
+        peerConnection.onicecandidateerror = (event) => {
+            console.error('ICE candidate error:', event);
+        };
 
         return peerConnection;
     } catch (error) {
@@ -320,7 +327,11 @@ function startConnection(isOfferer) {
     
     if (localStream) {
         localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
+            try {
+                peerConnection.addTrack(track, localStream);
+            } catch (error) {
+                console.error('Error adding track to peer connection:', error);
+            }
         });
     } else {
         console.error('Local stream is not available');
@@ -842,3 +853,24 @@ function logPeerConnectionState() {
 // Call this function every 5 seconds
 setInterval(logPeerConnectionState, 5000);
 
+function setupDataChannel(channel) {
+    console.log('Setting up data channel');
+    channel.onopen = () => {
+        console.log('Data channel opened');
+        if (blurRemovalRequestQueued) {
+            sendBlurRemovalRequest();
+            blurRemovalRequestQueued = false;
+        }
+    };
+    channel.onclose = () => console.log('Data channel closed');
+    channel.onerror = (error) => console.error('Data channel error:', error);
+    channel.onmessage = (event) => {
+        console.log('Received message on data channel:', event.data);
+        const message = JSON.parse(event.data);
+        if (message.type === 'blurRemovalRequest') {
+            handleBlurRemovalRequest();
+        } else if (message.type === 'blurRemovalResponse') {
+            handleBlurRemovalResponse(message.accepted);
+        }
+    };
+}
