@@ -148,8 +148,16 @@ wss.on('connection', (ws) => {
                         console.log('No partner to send message to');
                     }
                     break;
-                default:
-                    console.log('Unknown message type:', data.type);
+                case 'blurRemovalRequest':
+                case 'blurRemovalResponse':
+                    if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
+                        sendMessage(ws.partner, data);
+                    } else {
+                        console.log('No partner to send message to');
+                    }
+                    break;
+                    default:
+                     console.log('Unknown message type:', data.type);
             }
         } catch (error) {
             console.error('Error processing message:', error);
