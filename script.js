@@ -97,7 +97,14 @@ async function initializeChat() {
     }
 }
 
-async function initializeConnection() {
+let isConnecting = false;
+
+async function initializeConnection(isOfferer) {
+    if (isConnecting) {
+        console.log('Connection already in progress');
+        return;
+    }
+    isConnecting = true;
     console.log('Initializing connection');
     try {
         const constraints = { video: true, audio: true };
@@ -120,6 +127,18 @@ async function initializeConnection() {
         handleMediaError(error);
     }
 }
+
+// Reset the flag when the connection is established or fails
+function onConnectionEstablished() {
+    isConnecting = false;
+    // ... other code for successful connection
+}
+
+function onConnectionFailed() {
+    isConnecting = false;
+    // ... handle connection failure
+}
+
 function handleMediaError(error) {
     let errorMessage = '';
     switch(error.name) {
@@ -259,7 +278,6 @@ function startHeartbeat() {
     }, 15000); // Every 15 seconds
 }
 
-let isConnecting = false;
 let iceCandidateQueue = [];
 let offerQueue = null;
 
@@ -588,6 +606,7 @@ function handleBlurStateMessage(peerBlurState) {
     console.log('Received peer blur state:', peerBlurState);
     isBlurred = peerBlurState; // Update local blur state to match peer
     applyBlurEffect(); // Apply the new blur state
+}
 
 // Audio Control Functions
 function toggleAudio() {
@@ -600,6 +619,7 @@ function toggleAudio() {
         notifyAudioStateChange();
     }
 }
+
 
 function notifyAudioStateChange() {
     sendMessage({ type: 'audio-state', enabled: isAudioEnabled });
@@ -862,8 +882,12 @@ function setupDataChannel(channel) {
 function applyQueuedCandidates() {
     while (iceCandidatesQueue.length > 0) {
         const candidate = iceCandidatesQueue.shift();
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(error => console.error('Error adding queued ICE candidate:', error));
+        if (peerConnection && peerConnection.remoteDescription) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                .catch(error => console.error('Error adding queued ICE candidate:', error));
+        } else {
+            console.warn('Skipping ICE candidate: peer connection not ready');
+            iceCandidatesQueue.unshift(candidate);
+        }
     }
-}
 }
