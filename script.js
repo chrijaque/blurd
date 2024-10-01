@@ -26,8 +26,6 @@ let makingOffer = false;
 let ignoreOffer = false;
 let polite = false; // Will be set based on your role
 let isBlurred = true; // For preview
-let localWantsBlurOff = false;
-let remoteWantsBlurOff = false;
 let isConnectedToPeer = false;
 let dataChannel;
 let isAudioEnabled = false;
@@ -46,7 +44,7 @@ async function setupLocalPreview() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         localVideoPreview.srcObject = localStream;
-        applyBlurEffectPreview();
+        applyBlurEffect();
         console.log('Camera accessed successfully for preview');
     } catch (error) {
         console.error('Error accessing camera:', error);
@@ -54,13 +52,16 @@ async function setupLocalPreview() {
     }
 }
 
-function applyBlurEffectPreview() {
-    localVideoPreview.style.filter = isBlurred ? 'blur(10px)' : 'none';
+function applyBlurEffect() {
+    const filterValue = isBlurred ? 'blur(10px)' : 'none';
+    localVideo.style.filter = filterValue;
+    remoteVideo.style.filter = filterValue;
+    console.log('Applied blur effect:', filterValue);
 }
 
 toggleBlurButton.addEventListener('click', () => {
     isBlurred = !isBlurred;
-    applyBlurEffectPreview();
+    applyBlurEffect();
 });
 
 function updateStartChatButton() {
@@ -531,9 +532,6 @@ function updateBlurState() {
     console.log('Blur state updated');
 }
 
-let blurRemovalPending = false;
-let blurRemovalRequestQueued = false;
-
 function toggleBlur() {
     console.log('Toggle blur called');
     if (!removeBlurButton) {
@@ -722,24 +720,12 @@ function startChat() {
     }
 
 
-function setupBlurEffect() {
-    console.log('Setting up blur effect');
-    const localVideo = document.getElementById('localVideo');
-    const remoteVideo = document.getElementById('remoteVideo');
-    const removeBlurButton = document.getElementById('removeBlurButton');
-
-    if (!localVideo || !remoteVideo || !removeBlurButton) {
-        console.error('Video elements or remove blur button not found');
-        return;
+    function setupBlurEffect() {
+        console.log('Setting up blur effect');
+        applyBlurEffect(); // Apply initial blur to both videos
+        removeBlurButton.addEventListener('click', toggleBlur);
+        console.log('Blur effect setup complete');
     }
-
-    // Apply initial blur
-    localVideo.style.filter = 'blur(10px)';
-    remoteVideo.style.filter = 'blur(10px)';
-
-    removeBlurButton.addEventListener('click', toggleBlur);
-    console.log('Blur effect setup complete');
-}
 
 function restartIce() {
     if (peerConnection) {
