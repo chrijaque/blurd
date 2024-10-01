@@ -231,6 +231,7 @@ function setupWebSocket() {
         reconnectAttempts = 0;
         // Send any necessary initialization messages
         sendMessage({ type: 'ready', username: username });
+        startHeartbeat()
     };
     
     socket.onclose = (event) => {
@@ -359,13 +360,11 @@ function startConnection(isOfferer) {
     }
 
     if (isOfferer) {
-        console.log('Creating data channel (offerer)');
         dataChannel = peerConnection.createDataChannel('chat');
         setupDataChannel(dataChannel);
-        createAndSendOffer();
     } else {
+        // For the answerer
         peerConnection.ondatachannel = (event) => {
-            console.log('Received data channel from offerer');
             dataChannel = event.channel;
             setupDataChannel(dataChannel);
         };
@@ -405,14 +404,11 @@ function handleAnswerMessage(answer) {
 }
 
 function handleNewICECandidate(candidate) {
-    console.log('Received ICE candidate:', candidate);
     if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .then(() => console.log('Added ICE candidate successfully'))
             .catch(error => console.error('Error adding ICE candidate:', error));
     } else {
         iceCandidatesQueue.push(candidate);
-        console.log('ICE candidate queued. Queue length:', iceCandidatesQueue.length);
     }
 }
 
