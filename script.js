@@ -460,6 +460,7 @@ function setupChat() {
 
     if (chatInput && sendButton && chatMessages) {
         sendButton.addEventListener('click', sendChatMessage);
+        toggleAudioButton.addEventListener('click', toggleAudio);
         chatInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 sendChatMessage();
@@ -473,6 +474,22 @@ function setupChat() {
     nextButton.addEventListener('click', handleNext);
     disconnectButton.addEventListener('click', handleDisconnect);
     setupBlurEffect();
+}
+
+function toggleAudio() {
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+            audioTrack.enabled = !audioTrack.enabled;
+            console.log('Audio ' + (audioTrack.enabled ? 'unmuted' : 'muted'));
+            // Update UI to reflect audio state
+            // For example: toggleAudioButton.textContent = audioTrack.enabled ? 'Mute' : 'Unmute';
+        } else {
+            console.log('No audio track found');
+        }
+    } else {
+        console.log('Local stream not available');
+    }
 }
 
 function sendChatMessage() {
