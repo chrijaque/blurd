@@ -73,7 +73,7 @@ startChatButton.addEventListener('click', () => {
     const username = usernameInput.value.trim();
     if (username && termsCheckbox.checked) {
         localStorage.setItem('username', username);
-        startChat();
+        initializeChat();
     }
 });
 
