@@ -53,11 +53,11 @@ async function setupLocalPreview() {
 }
 
 function applyBlurEffectPreview() {
-    localVideoPreview.style.filter = isBlurred ? 'blur(10px)' : 'none';
+    localVideoPreview.style.filter = isPreviewBlurred ? 'blur(10px)' : 'none';
 }
 
 toggleBlurButton.addEventListener('click', () => {
-    isBlurred = !isBlurred;
+    isPreviewBlurred = !isPreviewBlurred;
     applyBlurEffectPreview();
 });
 
@@ -73,7 +73,7 @@ startChatButton.addEventListener('click', () => {
     const username = usernameInput.value.trim();
     if (username && termsCheckbox.checked) {
         localStorage.setItem('username', username);
-        initializeChat();
+        startChat();
     }
 });
 
@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Chat Initialization Functions
-async function initializeChat() {
+async function startChat() {
     console.log('Initializing chat');
     try {
         await initializeConnection();
@@ -93,7 +93,7 @@ async function initializeChat() {
         setupChat();
         console.log('Chat setup complete');
     } catch (error) {
-        console.error('Error in initializeChat:', error);
+        console.error('Error in startChat:', error);
     }
 }
 
@@ -608,19 +608,6 @@ function handleBlurStateMessage(peerBlurState) {
     applyBlurEffect(); // Apply the new blur state
 }
 
-// Audio Control Functions
-function toggleAudio() {
-    if (localStream) {
-        isAudioEnabled = !isAudioEnabled;
-        localStream.getAudioTracks().forEach(track => {
-            track.enabled = isAudioEnabled;
-        });
-        toggleAudioButton.textContent = isAudioEnabled ? 'Disable Audio' : 'Enable Audio';
-        notifyAudioStateChange();
-    }
-}
-
-
 function notifyAudioStateChange() {
     sendMessage({ type: 'audio-state', enabled: isAudioEnabled });
 }
@@ -704,7 +691,7 @@ function startChat() {
             }, 500); // Match the duration of the fade-in animation
     
             // Proceed with initializing the chat functionalities
-            initializeChat();
+            startChat();
         }, 500); // Match the duration of the fade-out animation
     }
 

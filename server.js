@@ -11,6 +11,7 @@ let waitingQueue = [];
 let connectedPairs = new Map();
 
 function pairUsers() {
+    console.log('Attempting to pair users. Queue length:', waitingQueue.length);
     while (waitingQueue.length >= 2) {
         const user1 = waitingQueue.shift();
         const user2 = waitingQueue.shift();
@@ -46,8 +47,11 @@ function pairUsers() {
     console.log('Pairing complete. Remaining in queue:', waitingQueue.length);
 }
 
-function heartbeat() {
-    this.isAlive = true;
+function removeFromQueue(ws) {
+    const index = waitingQueue.indexOf(ws);
+    if (index > -1) {
+        waitingQueue.splice(index, 1);
+    }
 }
 
 function sendMessage(user, message) {
@@ -104,18 +108,26 @@ function handleDisconnect(ws) {
             pairUsers();
         }
     } else {
-        const index = waitingQueue.indexOf(ws);
-        if (index > -1) {
-            waitingQueue.splice(index, 1);
-        }
+        removeFromQueue(ws);
     }
 }
 
+function sendError(ws, message) {
+    sendMessage(ws, { type: 'error', message: message });
+}
+
+// Use this in error cases, e.g.:
+// sendError(ws, 'Failed to pair with a partner');
+
 wss.on('connection', (ws) => {
+    console.log('New user connected. Total connections:', wss.clients.size);
     console.log('New user connected');
 
     ws.isAlive = true;
-    ws.on('pong', heartbeat);
+    ws.on('pong', () => {
+
+        ws.isAlive = true;
+    });
 
     ws.on('message', (message) => {
         try {
@@ -140,22 +152,13 @@ wss.on('connection', (ws) => {
                 case 'offer':
                 case 'answer':
                 case 'candidate':
-                case 'blur-preference':
-                case 'chat':
+                case 'blurState':
                     if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
                         sendMessage(ws.partner, data);
-                    } else {
-                        console.log('No partner to send message to');
-                    }
-                    break;
-                case 'blurRemovalRequest':
-                case 'blurRemovalResponse':
-                    if (ws.partner && ws.partner.readyState === WebSocket.OPEN) {
-                        sendMessage(ws.partner, data);
-                    } else {
-                        console.log('No partner to send message to');
-                    }
-                    break;
+                        } else {
+                            console.log('No partner to send message to');
+                        }
+                        break;
                     default:
                      console.log('Unknown message type:', data.type);
             }
@@ -165,7 +168,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', (code, reason) => {
-        console.log(`User disconnected. Code: ${code}, Reason: ${reason}`);
+        console.log(`User disconnected. Code: ${code}, Reason: ${reason}. Remaining connections: ${wss.clients.size}`);
         handleDisconnect(ws);
     });
 
@@ -177,16 +180,11 @@ wss.on('connection', (ws) => {
 // Heartbeat mechanism to check client connections
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            console.log('Terminating dead connection');
-            return ws.terminate();
-        }
-
+        if (ws.isAlive === false) return ws.terminate();
         ws.isAlive = false;
-        // We rely on the client to send 'ping' messages
-        // If the client doesn't send a 'ping', 'isAlive' will remain false
+        ws.ping(() => {});
     });
-}, 30000); // Check every 30 seconds
+}, 30000);
 
 wss.on('close', () => {
     clearInterval(interval);
